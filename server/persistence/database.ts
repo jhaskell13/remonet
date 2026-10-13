@@ -1,67 +1,62 @@
-import { mkdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { fileURLToPath } from 'node:url';
+import Database from 'better-sqlite3';
+import { config } from '../config.ts';
 
-const databasePath = resolve(process.env.REMONET_DB_PATH ?? 'data/remonet.sqlite');
-await mkdir(dirname(databasePath), { recursive: true });
+const databasePath = resolve(config.databasePath);
+mkdirSync(dirname(databasePath), { recursive: true });
 
-export const db = new DatabaseSync(databasePath);
-db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
-db.exec(`
-  CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS organizations (id TEXT PRIMARY KEY, name TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS networks (
-    id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT NOT NULL,
-    UNIQUE (id, organization_id), FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
-  );
-  CREATE TABLE IF NOT EXISTS areas (
-    id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, network_id TEXT NOT NULL, name TEXT NOT NULL, region TEXT NOT NULL,
-    UNIQUE (id, organization_id, network_id),
-    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
-    FOREIGN KEY (network_id, organization_id) REFERENCES networks(id, organization_id) ON DELETE CASCADE
-  );
-  CREATE TABLE IF NOT EXISTS devices (
-    id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, network_id TEXT NOT NULL, area_id TEXT NOT NULL,
-    name TEXT NOT NULL, type TEXT NOT NULL, address TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('Healthy', 'Warning', 'Offline')),
-    uptime TEXT NOT NULL, latency REAL NOT NULL, load REAL NOT NULL, last_seen TEXT NOT NULL,
-    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
-    FOREIGN KEY (network_id, organization_id) REFERENCES networks(id, organization_id) ON DELETE CASCADE,
-    FOREIGN KEY (area_id, organization_id, network_id) REFERENCES areas(id, organization_id, network_id) ON DELETE CASCADE
-  );
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL,
-    password_hash TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS teams (
-    id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, name TEXT NOT NULL,
-    UNIQUE (id, organization_id), UNIQUE (organization_id, name),
-    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
-  );
-  CREATE TABLE IF NOT EXISTS team_memberships (
-    user_id TEXT NOT NULL, team_id TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'operator', 'viewer')),
-    created_at TEXT NOT NULL, PRIMARY KEY (user_id, team_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
-  );
-  CREATE TABLE IF NOT EXISTS invitations (
-    id TEXT PRIMARY KEY, email TEXT NOT NULL COLLATE NOCASE, organization_id TEXT NOT NULL, team_id TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('admin', 'operator', 'viewer')), token_hash TEXT NOT NULL UNIQUE,
-    invited_by TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, accepted_at TEXT,
-    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
-    FOREIGN KEY (team_id, organization_id) REFERENCES teams(id, organization_id) ON DELETE CASCADE,
-    FOREIGN KEY (invited_by) REFERENCES users(id)
-  );
-  CREATE TABLE IF NOT EXISTS sessions (
-    token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-  CREATE INDEX IF NOT EXISTS team_memberships_user ON team_memberships(user_id);
-  CREATE INDEX IF NOT EXISTS invitations_email ON invitations(email, accepted_at, expires_at);
-  CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at);
-  CREATE INDEX IF NOT EXISTS devices_org_network_area ON devices(organization_id, network_id, area_id);
-`);
+export const db: InstanceType<typeof Database> = new Database(databasePath);
+db.pragma('foreign_keys = ON');
+db.pragma('journal_mode = WAL');
+db.pragma('busy_timeout = 5000');
+db.pragma('synchronous = NORMAL');
 
-for (const version of [1, 2, 3]) {
-  db.prepare('INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(version, new Date().toISOString());
+const migrationsDirectory = fileURLToPath(new URL('./migrations/', import.meta.url));
+export function migrateDatabase() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS migrations (
+      id TEXT PRIMARY KEY,
+      checksum TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    ) STRICT;
+  `);
+  const migrationFiles = readdirSync(migrationsDirectory)
+    .filter((file) => /^\d{3}_[a-z0-9_-]+\.sql$/.test(file))
+    .sort();
+  if (migrationFiles.some((file, index) => Number(file.slice(0, 3)) !== index + 1)) {
+    throw new Error('Database migrations must use a continuous sequence starting at 001');
+  }
+  const migrationRecord = db.prepare('SELECT checksum FROM migrations WHERE id = ?');
+  const recordMigration = db.prepare('INSERT INTO migrations (id, checksum, applied_at) VALUES (?, ?, ?)');
+  const migrationIds = new Set(migrationFiles.map((file) => file.slice(0, -4)));
+  const appliedMigrations = db.prepare('SELECT id FROM migrations').all() as { id: string }[];
+  const missingFiles = appliedMigrations.filter(({ id }) => !migrationIds.has(id));
+  if (missingFiles.length) {
+    throw new Error(
+      `Applied migrations are missing from the codebase: ${missingFiles.map(({ id }) => id).join(', ')}`,
+    );
+  }
+
+  for (const file of migrationFiles) {
+    const id = file.slice(0, -4);
+    const sql = readFileSync(resolve(migrationsDirectory, file), 'utf8').replace(/\r\n/g, '\n');
+    const checksum = createHash('sha256').update(sql).digest('hex');
+    const applied = migrationRecord.get(id) as { checksum: string } | undefined;
+    if (applied) {
+      if (applied.checksum !== checksum)
+        throw new Error(`Applied migration ${id} was modified. Add a new migration instead.`);
+      continue;
+    }
+    db.transaction(() => {
+      db.exec(sql);
+      recordMigration.run(id, checksum, new Date().toISOString());
+    })();
+  }
+}
+
+export function closeDatabase() {
+  db.close();
 }

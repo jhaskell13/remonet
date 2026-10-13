@@ -11,10 +11,21 @@ export function where(scope: Scope, alias = '') {
       values.push(...scope.organizationIds);
     }
   }
-  if (scope.organizationId) { clauses.push(`${prefix}organization_id = ?`); values.push(scope.organizationId); }
-  if (scope.networkId) { clauses.push(`${prefix}${alias === 'networks' ? 'id' : 'network_id'} = ?`); values.push(scope.networkId); }
+  if (scope.organizationId) {
+    clauses.push(`${prefix}organization_id = ?`);
+    values.push(scope.organizationId);
+  }
+  if (scope.networkId) {
+    clauses.push(`${prefix}${alias === 'networks' ? 'id' : 'network_id'} = ?`);
+    values.push(scope.networkId);
+  }
   if (scope.areaId) {
-    const areaColumn = alias === 'networks' ? 'id IN (SELECT network_id FROM areas WHERE id = ?)' : alias === 'areas' ? 'id = ?' : 'area_id = ?';
+    const areaColumn =
+      alias === 'networks'
+        ? 'id IN (SELECT network_id FROM areas WHERE id = ?)'
+        : alias === 'areas'
+          ? 'id = ?'
+          : 'area_id = ?';
     clauses.push(`${prefix}${areaColumn}`);
     values.push(scope.areaId);
   }
