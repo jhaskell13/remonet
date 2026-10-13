@@ -27,6 +27,7 @@ function Dashboard({
   const [organizationId, setOrganizationId] = useState(organizations[0]?.id ?? '');
   const [networkId, setNetworkId] = useState('');
   const [networks, setNetworks] = useState<Network[]>([]);
+  const [dataVersion, setDataVersion] = useState(0);
   const [areas, setAreas] = useState<Area[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [overview, setOverview] = useState(getOverview([], []));
@@ -68,7 +69,7 @@ function Dashboard({
     return () => {
       current = false;
     };
-  }, [organizationId, networkId, onLogout]);
+  }, [organizationId, networkId, dataVersion, onLogout]);
   const filtered = useMemo(
     () =>
       devices.filter(
@@ -81,6 +82,9 @@ function Dashboard({
     [query, filter, devices, areas],
   );
   const areaSummaries = getAreaSummaries(devices, areas);
+  const canManageNetworks = ['owner', 'admin'].includes(
+    organizations.find((org) => org.id === organizationId)?.role ?? '',
+  );
   if (loading && !devices.length && !dataError)
     return <div className="auth-loading">Loading your network…</div>;
   return (
@@ -212,7 +216,9 @@ function Dashboard({
                   </option>
                 ))}
               </select>
-              <span className="read-only-badge">Read only</span>
+              <span className="read-only-badge">
+                {page === 'Settings' && canManageNetworks ? 'Admin controls' : 'Read only'}
+              </span>
             </div>
           </div>
           <DashboardViews
@@ -230,6 +236,10 @@ function Dashboard({
             user={user}
             organizations={organizations}
             organizationId={organizationId}
+            networks={networks}
+            networkId={networkId}
+            onResourcesChanged={() => setDataVersion((version) => version + 1)}
+            canManageNetworks={canManageNetworks}
           />
           <footer className="footer">
             <span>

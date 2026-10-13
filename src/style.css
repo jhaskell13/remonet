@@ -1046,6 +1046,69 @@ tbody tr:last-child td {
 .settings-panel {
   padding: 22px;
 }
+.network-management {
+  margin-bottom: 14px;
+}
+.network-management .panel-header {
+  margin-bottom: 8px;
+}
+.network-management .panel-header p {
+  font-size: 10px;
+  color: #8b98a7;
+  margin: 6px 0 0;
+}
+.network-management-row {
+  min-height: 58px;
+  border-top: 1px solid #eef1f5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.network-management-row > div {
+  display: grid;
+  gap: 5px;
+}
+.network-management-row b {
+  font-size: 11px;
+  color: #455368;
+}
+.network-management-row small {
+  font-size: 9px;
+  color: #8f9baa;
+}
+.network-form {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid #eef1f5;
+  padding-top: 14px;
+}
+.network-form label {
+  display: grid;
+  gap: 6px;
+  color: #667588;
+  font-size: 10px;
+  font-weight: 600;
+}
+.network-form input,
+.network-form textarea {
+  width: 100%;
+  border: 1px solid #e3e8ef;
+  border-radius: 5px;
+  padding: 8px 10px;
+  color: #344054;
+  font-size: 11px;
+}
+.network-form textarea {
+  resize: vertical;
+}
+.network-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.network-form .data-error {
+  margin: 0;
+}
 .settings-panel h2 {
   font-size: 14px;
   margin: 0 0 5px;

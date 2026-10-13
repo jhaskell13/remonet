@@ -72,9 +72,11 @@ Endpoints:
 - `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`
 - `POST /api/invitations`, `/api/invitations/inspect`, `/api/invitations/accept`
 - `GET /api/organizations`, `/api/teams`, `/api/networks`, `/api/areas`, `/api/devices`, `/api/overview`
+- `POST /api/networks` and `PATCH /api/networks/:networkId` — owner/admin only, scoped to an organization the engineer belongs to; network names are unique within that organization
+- `POST /api/areas` and `PATCH /api/areas/:areaId` — owner/admin only, scoped to a network in an organization the engineer belongs to; area names are unique within their network
 
 Network data endpoints accept `organizationId`, `networkId`, and `areaId` filters. The server intersects those filters with the authenticated principal's organization memberships.
 
 ## Current limits
 
-Monitoring is based on illustrative fixtures. Live collectors, topology discovery, device changes, team administration, email delivery, SSO, password recovery, and audit history are not implemented. The server currently supports one SQLite process and is intended for a trusted single deployment, not horizontally scaled instances. Add automated tests before introducing production-facing write workflows or expanding the authorization model.
+Monitoring is based on illustrative fixtures. Live collectors, topology discovery, device changes, team administration, email delivery, SSO, password recovery, and audit history are not implemented. The server currently supports one SQLite process and is intended for a trusted single deployment, not horizontally scaled instances. Network create/edit is the first write workflow; add automated tests before expanding write operations or the authorization model.

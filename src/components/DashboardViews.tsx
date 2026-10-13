@@ -1,7 +1,9 @@
-import type { Area, AreaSummary, Device, NetworkOverview } from '../../shared/network.ts';
+import type { Area, AreaSummary, Device, Network, NetworkOverview } from '../../shared/network.ts';
 import type { OrganizationMembership, Session } from '../types.ts';
 import { DeviceTable, Stat, Topology } from './NetworkWidgets.tsx';
 import { InvitePanel } from './InvitePanel.tsx';
+import { NetworkManagement } from './NetworkManagement.tsx';
+import { AreaManagement } from './AreaManagement.tsx';
 
 export type DashboardPage = 'Overview' | 'Devices' | 'Topology' | 'Areas' | 'Activity' | 'Settings';
 export type DeviceFilter = 'All devices' | 'Healthy' | 'Warning' | 'Offline';
@@ -20,6 +22,10 @@ type DashboardViewsProps = {
   user: Session['user'];
   organizations: OrganizationMembership[];
   organizationId: string;
+  networks: Network[];
+  networkId: string;
+  onResourcesChanged: () => void;
+  canManageNetworks: boolean;
 };
 const statusClass = (status: string) => status.toLowerCase();
 export function DashboardViews(props: DashboardViewsProps) {
@@ -38,6 +44,10 @@ export function DashboardViews(props: DashboardViewsProps) {
     user,
     organizations,
     organizationId,
+    networks,
+    networkId,
+    onResourcesChanged,
+    canManageNetworks,
   } = props;
   return (
     <>
@@ -370,6 +380,18 @@ export function DashboardViews(props: DashboardViewsProps) {
       )}
       {page === 'Settings' && (
         <>
+          <NetworkManagement
+            networks={networks}
+            organizationId={organizationId}
+            canManage={canManageNetworks}
+            onChanged={onResourcesChanged}
+          />
+          <AreaManagement
+            areas={areas}
+            network={networks.find((network) => network.id === networkId)}
+            canManage={canManageNetworks}
+            onChanged={onResourcesChanged}
+          />
           <section className="panel settings-panel">
             <h2>Workspace settings</h2>
             <p>Signed in as {user.email}</p>

@@ -62,6 +62,23 @@ export const api = {
   organizations: () => request<{ data: Organization[] }>('/api/organizations'),
   networks: (filters: { organizationId?: string } = {}) =>
     request<{ data: Network[] }>(`/api/networks${queryString(filters)}`),
+  createNetwork: (input: { organizationId: string; name: string; description: string }) =>
+    request<{ data: Network }>('/api/networks', { method: 'POST', body: JSON.stringify(input) }),
+  updateNetwork: (networkId: string, input: { organizationId: string; name: string; description: string }) =>
+    request<{ data: Network }>(`/api/networks/${encodeURIComponent(networkId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+  createArea: (input: { organizationId: string; networkId: string; name: string; region: string }) =>
+    request<{ data: Area }>('/api/areas', { method: 'POST', body: JSON.stringify(input) }),
+  updateArea: (
+    areaId: string,
+    input: { organizationId: string; networkId: string; name: string; region: string },
+  ) =>
+    request<{ data: Area }>(`/api/areas/${encodeURIComponent(areaId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
   areas: (filters: { organizationId?: string; networkId?: string } = {}) =>
     request<{ data: Area[] }>(`/api/areas${queryString(filters)}`),
   devices: (filters: { organizationId?: string; networkId?: string } = {}) =>
