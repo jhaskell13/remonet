@@ -1,6 +1,6 @@
 # RemoNet
 
-RemoNet is a network operations dashboard starter for monitoring infrastructure across networks, areas, and organizations. It includes individual engineer accounts, team memberships, invitations, protected API routes, and illustrative local network data. Device data is read-only and seeded for now.
+RemoNet is a network operations dashboard starter for monitoring infrastructure across networks, areas, and organizations. It includes individual engineer accounts, team memberships, invitations, protected API routes, and organization-scoped inventory management. Live device monitoring is not implemented yet. See the [development roadmap](docs/DEVELOPMENT_ROADMAP.md) for the planned milestones.
 
 ## Runtime requirements
 
@@ -74,9 +74,13 @@ Endpoints:
 - `GET /api/organizations`, `/api/teams`, `/api/networks`, `/api/areas`, `/api/devices`, `/api/overview`
 - `POST /api/networks` and `PATCH /api/networks/:networkId` — owner/admin only, scoped to an organization the engineer belongs to; network names are unique within that organization
 - `POST /api/areas` and `PATCH /api/areas/:areaId` — owner/admin only, scoped to a network in an organization the engineer belongs to; area names are unique within their network
+- `DELETE /api/areas/:areaId` — owner/admin only; areas with devices cannot be deleted
+- `POST /api/devices` — owner/admin/operator only, requires an area in the selected network; a management address can only appear once per network
+- `PATCH /api/devices/:deviceId` — owner/admin/operator only; edits metadata or moves a device to another area in the same network
+- `DELETE /api/devices/:deviceId` — owner/admin only
 
 Network data endpoints accept `organizationId`, `networkId`, and `areaId` filters. The server intersects those filters with the authenticated principal's organization memberships.
 
 ## Current limits
 
-Monitoring is based on illustrative fixtures. Live collectors, topology discovery, device changes, team administration, email delivery, SSO, password recovery, and audit history are not implemented. The server currently supports one SQLite process and is intended for a trusted single deployment, not horizontally scaled instances. Network create/edit is the first write workflow; add automated tests before expanding write operations or the authorization model.
+Monitoring is based on illustrative fixtures. Device enrollment creates a `Pending` inventory record with no last-seen time until a collector reports in; changing its management address resets it to `Pending`. Live collectors, topology discovery, team administration, email delivery, SSO, password recovery, and audit history are not implemented. The server currently supports one SQLite process and is intended for a trusted single deployment, not horizontally scaled instances. Add automated tests before expanding write operations or the authorization model.

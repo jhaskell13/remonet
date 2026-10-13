@@ -70,7 +70,9 @@ export function DeviceTable({ rows, areas }: { rows: Device[]; areas: Area[] }) 
                   {device.status}
                 </span>
               </td>
-              <td>{device.status === 'Offline' ? '—' : `${device.latency} ms`}</td>
+              <td>
+                {device.status === 'Offline' || device.status === 'Pending' ? '—' : `${device.latency} ms`}
+              </td>
               <td>
                 <button className="row-menu">···</button>
               </td>

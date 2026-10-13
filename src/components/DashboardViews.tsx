@@ -4,9 +4,11 @@ import { DeviceTable, Stat, Topology } from './NetworkWidgets.tsx';
 import { InvitePanel } from './InvitePanel.tsx';
 import { NetworkManagement } from './NetworkManagement.tsx';
 import { AreaManagement } from './AreaManagement.tsx';
+import { DeviceEnrollment } from './DeviceEnrollment.tsx';
+import { DeviceManagement } from './DeviceManagement.tsx';
 
 export type DashboardPage = 'Overview' | 'Devices' | 'Topology' | 'Areas' | 'Activity' | 'Settings';
-export type DeviceFilter = 'All devices' | 'Healthy' | 'Warning' | 'Offline';
+export type DeviceFilter = 'All devices' | 'Pending' | 'Healthy' | 'Warning' | 'Offline';
 type DashboardViewsProps = {
   page: DashboardPage;
   overview: NetworkOverview;
@@ -26,6 +28,7 @@ type DashboardViewsProps = {
   networkId: string;
   onResourcesChanged: () => void;
   canManageNetworks: boolean;
+  canEnrollDevices: boolean;
 };
 const statusClass = (status: string) => status.toLowerCase();
 export function DashboardViews(props: DashboardViewsProps) {
@@ -48,6 +51,7 @@ export function DashboardViews(props: DashboardViewsProps) {
     networkId,
     onResourcesChanged,
     canManageNetworks,
+    canEnrollDevices,
   } = props;
   return (
     <>
@@ -71,7 +75,7 @@ export function DashboardViews(props: DashboardViewsProps) {
             <Stat
               label="Needs attention"
               value={String(overview.needsAttention)}
-              detail={`${overview.warning} warnings · ${overview.offline} offline`}
+              detail={`${overview.pending} pending · ${overview.warning} warnings · ${overview.offline} offline`}
               icon="!"
               accent="amber"
             />
@@ -143,6 +147,12 @@ export function DashboardViews(props: DashboardViewsProps) {
                     <i className="legend-dot offline"></i>Offline
                   </span>
                   <b>{overview.offline}</b>
+                </div>
+                <div>
+                  <span>
+                    <i className="legend-dot pending"></i>Pending
+                  </span>
+                  <b>{overview.pending}</b>
                 </div>
               </div>
               <button
@@ -259,6 +269,7 @@ export function DashboardViews(props: DashboardViewsProps) {
               </label>
               <select value={filter} onChange={(e) => onFilterChange(e.target.value as DeviceFilter)}>
                 <option>All devices</option>
+                <option>Pending</option>
                 <option>Healthy</option>
                 <option>Warning</option>
                 <option>Offline</option>
@@ -388,8 +399,24 @@ export function DashboardViews(props: DashboardViewsProps) {
           />
           <AreaManagement
             areas={areas}
+            devices={devices}
             network={networks.find((network) => network.id === networkId)}
             canManage={canManageNetworks}
+            onChanged={onResourcesChanged}
+          />
+          <DeviceEnrollment
+            areas={areas}
+            network={networks.find((network) => network.id === networkId)}
+            canEnroll={canEnrollDevices}
+            onEnrolled={onResourcesChanged}
+          />
+          <DeviceManagement
+            key={networkId || 'no-network'}
+            devices={devices}
+            areas={areas}
+            network={networks.find((network) => network.id === networkId)}
+            canEdit={canEnrollDevices}
+            canDelete={canManageNetworks}
             onChanged={onResourcesChanged}
           />
           <section className="panel settings-panel">

@@ -17,6 +17,12 @@ import {
   type AreaBody,
   createAreaController,
   updateAreaController,
+  enrollDeviceController,
+  type EnrollDeviceInput,
+  type DeviceBody,
+  deleteAreaController,
+  updateDeviceController,
+  deleteDeviceController,
 } from './network.controller.ts';
 
 const networkBody = {
@@ -48,6 +54,19 @@ const areaBody = {
     networkId: { type: 'string', minLength: 1, maxLength: 120 },
     name: { type: 'string', minLength: 1, maxLength: 120 },
     region: { type: 'string', minLength: 1, maxLength: 160 },
+  },
+} as const;
+const deviceBody = {
+  type: 'object',
+  required: ['organizationId', 'networkId', 'areaId', 'name', 'type', 'address'],
+  additionalProperties: false,
+  properties: {
+    organizationId: { type: 'string', minLength: 1, maxLength: 120 },
+    networkId: { type: 'string', minLength: 1, maxLength: 120 },
+    areaId: { type: 'string', minLength: 1, maxLength: 120 },
+    name: { type: 'string', minLength: 1, maxLength: 120 },
+    type: { type: 'string', enum: ['Router', 'Switch', 'Firewall', 'Access point', 'Other'] },
+    address: { type: 'string', minLength: 1, maxLength: 253 },
   },
 } as const;
 const teamQuery = {
@@ -111,6 +130,75 @@ export function registerNetworkRoutes(app: FastifyInstance) {
       preHandler: requirePrincipal,
     },
     updateAreaController,
+  );
+  app.delete<{
+    Params: { areaId: string };
+    Querystring: { organizationId: string; networkId: string };
+  }>(
+    '/api/areas/:areaId',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['areaId'],
+          additionalProperties: false,
+          properties: { areaId: { type: 'string', minLength: 1, maxLength: 120 } },
+        },
+        querystring: {
+          type: 'object',
+          required: ['organizationId', 'networkId'],
+          additionalProperties: false,
+          properties: {
+            organizationId: { type: 'string', minLength: 1, maxLength: 120 },
+            networkId: { type: 'string', minLength: 1, maxLength: 120 },
+          },
+        },
+      },
+      preHandler: requirePrincipal,
+    },
+    deleteAreaController,
+  );
+  app.post<{ Body: EnrollDeviceInput }>(
+    '/api/devices',
+    { schema: { body: deviceBody }, preHandler: requirePrincipal },
+    enrollDeviceController,
+  );
+  app.patch<{ Params: { deviceId: string }; Body: DeviceBody }>(
+    '/api/devices/:deviceId',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['deviceId'],
+          additionalProperties: false,
+          properties: { deviceId: { type: 'string', minLength: 1, maxLength: 120 } },
+        },
+        body: deviceBody,
+      },
+      preHandler: requirePrincipal,
+    },
+    updateDeviceController,
+  );
+  app.delete<{ Params: { deviceId: string }; Querystring: { organizationId: string } }>(
+    '/api/devices/:deviceId',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['deviceId'],
+          additionalProperties: false,
+          properties: { deviceId: { type: 'string', minLength: 1, maxLength: 120 } },
+        },
+        querystring: {
+          type: 'object',
+          required: ['organizationId'],
+          additionalProperties: false,
+          properties: { organizationId: { type: 'string', minLength: 1, maxLength: 120 } },
+        },
+      },
+      preHandler: requirePrincipal,
+    },
+    deleteDeviceController,
   );
   app.get<{ Querystring: NetworkQuery }>(
     '/api/areas',

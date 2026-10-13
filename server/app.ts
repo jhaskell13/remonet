@@ -38,7 +38,7 @@ export async function createApp() {
       reply.header('access-control-allow-origin', origin);
       reply.header('access-control-allow-credentials', 'true');
       reply.header('access-control-allow-headers', 'Authorization, Content-Type');
-      reply.header('access-control-allow-methods', 'GET, POST, PATCH, OPTIONS');
+      reply.header('access-control-allow-methods', 'GET, POST, PATCH, DELETE, OPTIONS');
       reply.header('vary', 'Origin');
     }
     if (request.url.startsWith('/api/')) reply.header('cache-control', 'no-store');

@@ -1,4 +1,12 @@
-import type { Area, Device, Network, NetworkOverview, Organization, Team } from '../../shared/network.ts';
+import type {
+  Area,
+  Device,
+  DeviceType,
+  Network,
+  NetworkOverview,
+  Organization,
+  Team,
+} from '../../shared/network.ts';
 import type { Invitation, Session } from '../types.ts';
 
 export class ApiError extends Error {
@@ -79,6 +87,38 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(input),
     }),
+  deleteArea: (areaId: string, input: { organizationId: string; networkId: string }) =>
+    request<{ data: { ok: true } }>(`/api/areas/${encodeURIComponent(areaId)}${queryString(input)}`, {
+      method: 'DELETE',
+    }),
+  enrollDevice: (input: {
+    organizationId: string;
+    networkId: string;
+    areaId: string;
+    name: string;
+    type: DeviceType;
+    address: string;
+  }) => request<{ data: Device }>('/api/devices', { method: 'POST', body: JSON.stringify(input) }),
+  updateDevice: (
+    deviceId: string,
+    input: {
+      organizationId: string;
+      networkId: string;
+      areaId: string;
+      name: string;
+      type: DeviceType;
+      address: string;
+    },
+  ) =>
+    request<{ data: Device }>(`/api/devices/${encodeURIComponent(deviceId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+  deleteDevice: (deviceId: string, organizationId: string) =>
+    request<{ data: { ok: true } }>(
+      `/api/devices/${encodeURIComponent(deviceId)}${queryString({ organizationId })}`,
+      { method: 'DELETE' },
+    ),
   areas: (filters: { organizationId?: string; networkId?: string } = {}) =>
     request<{ data: Area[] }>(`/api/areas${queryString(filters)}`),
   devices: (filters: { organizationId?: string; networkId?: string } = {}) =>

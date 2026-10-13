@@ -1,12 +1,19 @@
 import { randomUUID } from 'node:crypto';
+import { isIP } from 'node:net';
 import type { Principal } from '../../auth.ts';
+import type { DeviceType } from '../../../shared/network.ts';
 import { AppError } from '../../http/app-error.ts';
 import { db } from '../../persistence/database.ts';
 import {
   createArea,
+  createDevice,
   createNetwork,
+  deleteAreaIfEmpty,
+  deleteDevice,
+  getArea,
   getNetwork,
   updateArea,
+  updateDevice,
   updateNetwork,
 } from '../../persistence/repositories/network-repository.ts';
 import { canManageOrganization } from '../../persistence/repositories/team-repository.ts';
@@ -171,4 +178,87 @@ export function updateAreaFor(principal: Principal, id: string, input: AreaInput
       throw new AppError(409, 'An area with this name already exists in the network');
     throw error;
   }
+}
+export function deleteAreaFor(
+  principal: Principal,
+  id: string,
+  input: { organizationId: string; networkId: string },
+) {
+  requireAreaNetwork(principal, input.organizationId, input.networkId);
+  if (deleteAreaIfEmpty(id, input.organizationId, input.networkId)) return { ok: true as const };
+  if (!getArea(id, input.organizationId, input.networkId)) throw new AppError(404, 'Area not found');
+  throw new AppError(409, 'Move or remove the devices in this area before deleting it');
+}
+
+export type EnrollDeviceInput = {
+  organizationId: string;
+  networkId: string;
+  areaId: string;
+  name: string;
+  type: DeviceType;
+  address: string;
+};
+
+function requireDeviceOperator(principal: Principal, organizationId: string) {
+  const membership = principal.organizations.find((organization) => organization.id === organizationId);
+  if (principal.serviceToken || !membership) throw new AppError(403, 'Organization access denied');
+  if (!['owner', 'admin', 'operator'].includes(membership.role))
+    throw new AppError(403, 'Organization operator access required');
+}
+
+function cleanDeviceInput(input: EnrollDeviceInput) {
+  const name = input.name.trim();
+  const address = input.address.trim();
+  if (!name) throw new AppError(400, 'Device name is required');
+  const hostname = address.replace(/\.$/, '');
+  const validHostname =
+    hostname.length > 0 &&
+    hostname.length <= 253 &&
+    hostname.split('.').every((label) => /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/i.test(label));
+  if (!address || address.length > 253 || (isIP(address) === 0 && !validHostname))
+    throw new AppError(400, 'Enter a valid IP address or hostname');
+  return { ...input, name, address };
+}
+
+function requireDeviceArea(input: EnrollDeviceInput) {
+  const area = getArea(input.areaId, input.organizationId, input.networkId);
+  if (!area) throw new AppError(404, 'Area not found in this network');
+}
+
+export function enrollDeviceFor(principal: Principal, input: EnrollDeviceInput) {
+  requireDeviceOperator(principal, input.organizationId);
+  const cleanInput = cleanDeviceInput(input);
+  requireDeviceArea(cleanInput);
+
+  try {
+    return createDevice({
+      id: randomUUID(),
+      ...cleanInput,
+    });
+  } catch (error) {
+    if (isUniqueConstraint(error))
+      throw new AppError(409, 'A device with this address already exists in the network');
+    throw error;
+  }
+}
+
+export function updateDeviceFor(principal: Principal, id: string, input: EnrollDeviceInput) {
+  requireDeviceOperator(principal, input.organizationId);
+  const cleanInput = cleanDeviceInput(input);
+  requireDeviceArea(cleanInput);
+  try {
+    const result = updateDevice({ id, ...cleanInput });
+    if (!result) throw new AppError(404, 'Device not found');
+    return result;
+  } catch (error) {
+    if (isUniqueConstraint(error))
+      throw new AppError(409, 'A device with this address already exists in the network');
+    throw error;
+  }
+}
+
+export function deleteDeviceFor(principal: Principal, id: string, input: { organizationId: string }) {
+  requireNetworkManager(principal, input.organizationId);
+  if (!deleteDevice(id, input.organizationId)) throw new AppError(404, 'Device not found');
+  return { ok: true as const };
 }

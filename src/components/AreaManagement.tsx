@@ -1,26 +1,49 @@
 import { useState, type FormEvent } from 'react';
-import type { Area, Network } from '../../shared/network.ts';
+import type { Area, Device, Network } from '../../shared/network.ts';
 import { api, ApiError } from '../api/client.ts';
 
 type AreaManagementProps = {
   areas: Area[];
+  devices: Device[];
   network: Network | undefined;
   canManage: boolean;
   onChanged: () => void;
 };
 
-export function AreaManagement({ areas, network, canManage, onChanged }: AreaManagementProps) {
+export function AreaManagement({ areas, devices, network, canManage, onChanged }: AreaManagementProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [region, setRegion] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function startEditing(area?: Area) {
     setEditingId(area?.id ?? 'new');
     setName(area?.name ?? '');
     setRegion(area?.region ?? '');
     setError('');
+  }
+
+  async function removeArea(area: Area, deviceCount: number) {
+    if (!network || deviceCount > 0) return;
+    if (!window.confirm(`Delete area “${area.name}”? This cannot be undone.`)) return;
+    setDeletingId(area.id);
+    setError('');
+    try {
+      await api.deleteArea(area.id, { organizationId: network.organizationId, networkId: network.id });
+      onChanged();
+    } catch (reason) {
+      setError(
+        reason instanceof ApiError && reason.status === 409
+          ? 'This area still contains devices. Move or remove them before deleting the area.'
+          : reason instanceof Error
+            ? reason.message
+            : 'Could not delete the area.',
+      );
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -66,16 +89,37 @@ export function AreaManagement({ areas, network, canManage, onChanged }: AreaMan
         )}
       </div>
       {network && !areas.length && !editingId && <p>No areas have been added to this network yet.</p>}
+      {error && !editingId && <div className="data-error">{error}</div>}
       {areas.map((area) => (
         <div className="network-management-row" key={area.id}>
           <div>
             <b>{area.name}</b>
-            <small>{area.region}</small>
+            <small>
+              {area.region}
+              {devices.some((device) => device.areaId === area.id) &&
+                ` · ${devices.filter((device) => device.areaId === area.id).length} devices assigned`}
+            </small>
           </div>
           {canManage && network && !editingId && (
-            <button className="text-button" onClick={() => startEditing(area)}>
-              Edit
-            </button>
+            <div className="management-actions">
+              <button className="text-button" onClick={() => startEditing(area)}>
+                Edit
+              </button>
+              <button
+                className="text-button danger-text"
+                disabled={devices.some((device) => device.areaId === area.id) || deletingId === area.id}
+                title={
+                  devices.some((device) => device.areaId === area.id)
+                    ? 'Move or remove assigned devices first'
+                    : 'Delete empty area'
+                }
+                onClick={() =>
+                  void removeArea(area, devices.filter((device) => device.areaId === area.id).length)
+                }
+              >
+                {deletingId === area.id ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
           )}
         </div>
       ))}

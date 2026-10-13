@@ -17,14 +17,17 @@ export function getOverview(deviceList: Device[], areaList: Area[]): NetworkOver
   const healthy = deviceList.filter((device) => device.status === 'Healthy').length;
   const warning = deviceList.filter((device) => device.status === 'Warning').length;
   const offline = deviceList.filter((device) => device.status === 'Offline').length;
+  const pending = deviceList.filter((device) => device.status === 'Pending').length;
   return {
     totalDevices: deviceList.length,
     online: healthy,
     healthy,
     warning,
-    needsAttention: warning + offline,
+    needsAttention: warning + offline + pending,
     offline,
-    healthScore: deviceList.length ? Number(((healthy / deviceList.length) * 100).toFixed(2)) : 0,
+    pending,
+    healthScore:
+      deviceList.length > pending ? Number(((healthy / (deviceList.length - pending)) * 100).toFixed(2)) : 0,
     areas: areaList.length,
     updatedAt: new Date().toISOString(),
   };

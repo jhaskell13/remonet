@@ -617,6 +617,9 @@ button {
 .legend-dot.offline {
   background: #e16b65;
 }
+.legend-dot.pending {
+  background: #6c8db8;
+}
 .map-caption {
   right: 3px;
   bottom: 3px;
@@ -806,6 +809,13 @@ tbody tr:last-child td {
 .status-pill.offline {
   background: #fff0ef;
   color: #ce615a;
+}
+.status-pill.pending {
+  color: #5475a5;
+  background: #eef4fb;
+}
+.status-pill.pending i {
+  background: #6c8db8;
 }
 .row-menu {
   border: 0;
@@ -1075,6 +1085,18 @@ tbody tr:last-child td {
 .network-management-row small {
   font-size: 9px;
   color: #8f9baa;
+}
+.management-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.management-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.danger-text {
+  color: #c05050;
 }
 .network-form {
   display: grid;

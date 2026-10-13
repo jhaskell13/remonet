@@ -85,6 +85,9 @@ function Dashboard({
   const canManageNetworks = ['owner', 'admin'].includes(
     organizations.find((org) => org.id === organizationId)?.role ?? '',
   );
+  const canEnrollDevices = ['owner', 'admin', 'operator'].includes(
+    organizations.find((org) => org.id === organizationId)?.role ?? '',
+  );
   if (loading && !devices.length && !dataError)
     return <div className="auth-loading">Loading your network…</div>;
   return (
@@ -240,6 +243,7 @@ function Dashboard({
             networkId={networkId}
             onResourcesChanged={() => setDataVersion((version) => version + 1)}
             canManageNetworks={canManageNetworks}
+            canEnrollDevices={canEnrollDevices}
           />
           <footer className="footer">
             <span>
