@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api } from './api/client';
+import { api, ApiError } from './api/client';
 import Dashboard from './components/Dashboard';
 import { InvitationScreen, LoginScreen } from './components/AuthScreens';
 import type { Invitation, Session } from './types';
@@ -57,6 +57,13 @@ function App() {
     await api.logout().catch(() => undefined);
     setSession(null);
   }, []);
+  const refreshSession = useCallback(async () => {
+    try {
+      setSession(await api.currentSession());
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.status === 401) setSession(null);
+    }
+  }, []);
   if (checkingSession) return <div className="auth-loading">Connecting to RemoNet…</div>;
   if (inviteError)
     return (
@@ -91,7 +98,15 @@ function App() {
   if (invitation && !session && !invitation.accountExists)
     return <InvitationScreen invitation={invitation} onAccept={acceptInvitation} />;
   if (!session) return <LoginScreen onLogin={login} invitation={invitation} />;
-  return <Dashboard user={session.user} organizations={session.organizations} onLogout={logout} />;
+  return (
+    <Dashboard
+      key={session.user.id}
+      user={session.user}
+      organizations={session.organizations}
+      onLogout={logout}
+      onSessionChanged={refreshSession}
+    />
+  );
 }
 
 export default App;

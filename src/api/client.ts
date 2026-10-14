@@ -1,10 +1,14 @@
 import type {
+  AccessRole,
   Area,
+  AuditEvent,
   Device,
   DeviceType,
   Network,
   NetworkOverview,
   Organization,
+  OrganizationMember,
+  PendingInvitation,
   Team,
 } from '../../shared/network.ts';
 import type { Invitation, Session } from '../types.ts';
@@ -65,9 +69,63 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  pendingInvitations: (organizationId: string) =>
+    request<{ data: PendingInvitation[] }>(`/api/invitations${queryString({ organizationId })}`),
+  revokeInvitation: (invitationId: string, organizationId: string) =>
+    request<{ data: { ok: true } }>(
+      `/api/invitations/${encodeURIComponent(invitationId)}${queryString({ organizationId })}`,
+      { method: 'DELETE' },
+    ),
   teams: (organizationId: string) =>
     request<{ data: Team[] }>(`/api/teams${queryString({ organizationId })}`),
+  createTeam: (input: { organizationId: string; name: string }) =>
+    request<{ data: Team }>('/api/teams', { method: 'POST', body: JSON.stringify(input) }),
+  updateTeam: (teamId: string, input: { organizationId: string; name: string }) =>
+    request<{ data: Team }>(`/api/teams/${encodeURIComponent(teamId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+  deleteTeam: (teamId: string, organizationId: string) =>
+    request<{ data: { ok: true } }>(
+      `/api/teams/${encodeURIComponent(teamId)}${queryString({ organizationId })}`,
+      {
+        method: 'DELETE',
+      },
+    ),
   organizations: () => request<{ data: Organization[] }>('/api/organizations'),
+  createOrganization: (input: { name: string; teamName?: string }) =>
+    request<{ data: Organization & { role: 'owner'; team: Team } }>('/api/organizations', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateOrganization: (organizationId: string, input: { name: string }) =>
+    request<{ data: Organization }>(`/api/organizations/${encodeURIComponent(organizationId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+  members: (organizationId: string) =>
+    request<{ data: OrganizationMember[] }>(
+      `/api/organizations/${encodeURIComponent(organizationId)}/members`,
+    ),
+  addMember: (teamId: string, input: { organizationId: string; userId: string; role: AccessRole }) =>
+    request<{ data: OrganizationMember }>(`/api/teams/${encodeURIComponent(teamId)}/members`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  changeMemberRole: (teamId: string, userId: string, input: { organizationId: string; role: AccessRole }) =>
+    request<{ data: OrganizationMember }>(
+      `/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+    ),
+  removeMember: (teamId: string, userId: string, organizationId: string) =>
+    request<{ data: { ok: true } }>(
+      `/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}${queryString({ organizationId })}`,
+      { method: 'DELETE' },
+    ),
+  audit: (filters: { organizationId?: string; limit?: number } = {}) =>
+    request<{ data: AuditEvent[] }>(
+      `/api/audit${queryString({ organizationId: filters.organizationId, limit: filters.limit?.toString() })}`,
+    ),
   networks: (filters: { organizationId?: string } = {}) =>
     request<{ data: Network[] }>(`/api/networks${queryString(filters)}`),
   createNetwork: (input: { organizationId: string; name: string; description: string }) =>

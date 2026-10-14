@@ -4,10 +4,21 @@ import {
   acceptInvitationController,
   createInvitationController,
   inspectInvitationController,
+  listInvitationsController,
+  revokeInvitationController,
   type AcceptBody,
   type CreateBody,
   type InspectBody,
+  type InvitationParams,
+  type OrganizationQuery,
 } from './invitation.controller.ts';
+
+const organizationQuery = {
+  type: 'object',
+  required: ['organizationId'],
+  additionalProperties: false,
+  properties: { organizationId: { type: 'string', minLength: 1, maxLength: 120 } },
+} as const;
 
 const tokenBody = {
   type: 'object',
@@ -41,6 +52,27 @@ export function registerInvitationRoutes(app: FastifyInstance) {
       preHandler: [requireAllowedOrigin, requireEngineer],
     },
     createInvitationController,
+  );
+  app.get<{ Querystring: OrganizationQuery }>(
+    '/api/invitations',
+    { schema: { querystring: organizationQuery }, preHandler: requireEngineer },
+    listInvitationsController,
+  );
+  app.delete<{ Params: InvitationParams; Querystring: OrganizationQuery }>(
+    '/api/invitations/:invitationId',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['invitationId'],
+          additionalProperties: false,
+          properties: { invitationId: { type: 'string', minLength: 1, maxLength: 120 } },
+        },
+        querystring: organizationQuery,
+      },
+      preHandler: [requireAllowedOrigin, requireEngineer],
+    },
+    revokeInvitationController,
   );
   app.post<{ Body: AcceptBody }>(
     '/api/invitations/accept',

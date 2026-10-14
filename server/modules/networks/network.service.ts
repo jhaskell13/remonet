@@ -11,12 +11,14 @@ import {
   deleteAreaIfEmpty,
   deleteDevice,
   getArea,
+  getDevice,
   getNetwork,
   updateArea,
   updateDevice,
   updateNetwork,
 } from '../../persistence/repositories/network-repository.ts';
-import { canManageOrganization } from '../../persistence/repositories/team-repository.ts';
+import { requirePermission } from '../../authorization.ts';
+import { recordAudit } from '../audit/audit.service.ts';
 import {
   getOverview,
   listAreas,
@@ -86,10 +88,7 @@ export type NetworkInput = { organizationId: string; name: string; description: 
 
 function requireNetworkManager(principal: Principal, organizationId: string) {
   if (principal.serviceToken) throw new AppError(403, 'Engineer account required to manage networks');
-  if (!principal.organizations.some((organization) => organization.id === organizationId))
-    throw new AppError(403, 'Organization access denied');
-  if (!canManageOrganization(principal.id, organizationId))
-    throw new AppError(403, 'Organization admin access required');
+  requirePermission(principal, organizationId, 'network.manage');
 }
 
 function cleanNetworkInput(input: NetworkInput) {
@@ -104,8 +103,19 @@ function cleanNetworkInput(input: NetworkInput) {
 
 export function createNetworkFor(principal: Principal, input: NetworkInput) {
   requireNetworkManager(principal, input.organizationId);
+  const cleanInput = cleanNetworkInput(input);
   try {
-    return createNetwork({ id: randomUUID(), ...cleanNetworkInput(input) });
+    return db.transaction(() => {
+      const network = createNetwork({ id: randomUUID(), ...cleanInput });
+      recordAudit(principal, {
+        organizationId: network.organizationId,
+        action: 'network.created',
+        entityType: 'network',
+        entityId: network.id,
+        details: { after: network },
+      });
+      return network;
+    })();
   } catch (error) {
     if (isUniqueConstraint(error)) throw new AppError(409, 'A network with this name already exists');
     throw error;
@@ -114,10 +124,21 @@ export function createNetworkFor(principal: Principal, input: NetworkInput) {
 
 export function updateNetworkFor(principal: Principal, id: string, input: NetworkInput) {
   requireNetworkManager(principal, input.organizationId);
+  const cleanInput = cleanNetworkInput(input);
   try {
-    const result = updateNetwork(id, [input.organizationId], cleanNetworkInput(input));
-    if (!result) throw new AppError(404, 'Network not found');
-    return result;
+    return db.transaction(() => {
+      const before = getNetwork(id, [cleanInput.organizationId]);
+      const result = before && updateNetwork(id, [cleanInput.organizationId], cleanInput);
+      if (!result) throw new AppError(404, 'Network not found');
+      recordAudit(principal, {
+        organizationId: result.organizationId,
+        action: 'network.updated',
+        entityType: 'network',
+        entityId: result.id,
+        details: { before, after: result },
+      });
+      return result;
+    })();
   } catch (error) {
     if (isUniqueConstraint(error)) throw new AppError(409, 'A network with this name already exists');
     throw error;
@@ -152,7 +173,17 @@ export function createAreaFor(principal: Principal, input: AreaInput) {
   const cleanInput = cleanAreaInput(input);
   requireAreaNetwork(principal, cleanInput.organizationId, cleanInput.networkId);
   try {
-    return createArea({ id: randomUUID(), ...cleanInput });
+    return db.transaction(() => {
+      const area = createArea({ id: randomUUID(), ...cleanInput });
+      recordAudit(principal, {
+        organizationId: area.organizationId,
+        action: 'area.created',
+        entityType: 'area',
+        entityId: area.id,
+        details: { after: area },
+      });
+      return area;
+    })();
   } catch (error) {
     if (isUniqueConstraint(error))
       throw new AppError(409, 'An area with this name already exists in the network');
@@ -164,15 +195,21 @@ export function updateAreaFor(principal: Principal, id: string, input: AreaInput
   const cleanInput = cleanAreaInput(input);
   requireAreaNetwork(principal, cleanInput.organizationId, cleanInput.networkId);
   try {
-    const result = updateArea(
-      id,
-      cleanInput.organizationId,
-      cleanInput.networkId,
-      cleanInput.name,
-      cleanInput.region,
-    );
-    if (!result) throw new AppError(404, 'Area not found');
-    return result;
+    return db.transaction(() => {
+      const before = getArea(id, cleanInput.organizationId, cleanInput.networkId);
+      const result =
+        before &&
+        updateArea(id, cleanInput.organizationId, cleanInput.networkId, cleanInput.name, cleanInput.region);
+      if (!result) throw new AppError(404, 'Area not found');
+      recordAudit(principal, {
+        organizationId: result.organizationId,
+        action: 'area.updated',
+        entityType: 'area',
+        entityId: result.id,
+        details: { before, after: result },
+      });
+      return result;
+    })();
   } catch (error) {
     if (isUniqueConstraint(error))
       throw new AppError(409, 'An area with this name already exists in the network');
@@ -185,9 +222,20 @@ export function deleteAreaFor(
   input: { organizationId: string; networkId: string },
 ) {
   requireAreaNetwork(principal, input.organizationId, input.networkId);
-  if (deleteAreaIfEmpty(id, input.organizationId, input.networkId)) return { ok: true as const };
-  if (!getArea(id, input.organizationId, input.networkId)) throw new AppError(404, 'Area not found');
-  throw new AppError(409, 'Move or remove the devices in this area before deleting it');
+  return db.transaction(() => {
+    const before = getArea(id, input.organizationId, input.networkId);
+    if (!before) throw new AppError(404, 'Area not found');
+    if (!deleteAreaIfEmpty(id, input.organizationId, input.networkId))
+      throw new AppError(409, 'Move or remove the devices in this area before deleting it');
+    recordAudit(principal, {
+      organizationId: before.organizationId,
+      action: 'area.deleted',
+      entityType: 'area',
+      entityId: before.id,
+      details: { before },
+    });
+    return { ok: true as const };
+  })();
 }
 
 export type EnrollDeviceInput = {
@@ -200,10 +248,8 @@ export type EnrollDeviceInput = {
 };
 
 function requireDeviceOperator(principal: Principal, organizationId: string) {
-  const membership = principal.organizations.find((organization) => organization.id === organizationId);
-  if (principal.serviceToken || !membership) throw new AppError(403, 'Organization access denied');
-  if (!['owner', 'admin', 'operator'].includes(membership.role))
-    throw new AppError(403, 'Organization operator access required');
+  if (principal.serviceToken) throw new AppError(403, 'Organization access denied');
+  requirePermission(principal, organizationId, 'device.enroll');
 }
 
 function cleanDeviceInput(input: EnrollDeviceInput) {
@@ -211,10 +257,13 @@ function cleanDeviceInput(input: EnrollDeviceInput) {
   const address = input.address.trim();
   if (!name) throw new AppError(400, 'Device name is required');
   const hostname = address.replace(/\.$/, '');
+  const labels = hostname.split('.');
   const validHostname =
     hostname.length > 0 &&
     hostname.length <= 253 &&
-    hostname.split('.').every((label) => /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/i.test(label));
+    labels.every((label) => /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/i.test(label)) &&
+    // An all-numeric top-level label is not a hostname; it is almost always a mistyped IP address.
+    !/^\d+$/.test(labels[labels.length - 1] ?? '');
   if (!address || address.length > 253 || (isIP(address) === 0 && !validHostname))
     throw new AppError(400, 'Enter a valid IP address or hostname');
   return { ...input, name, address };
@@ -231,10 +280,17 @@ export function enrollDeviceFor(principal: Principal, input: EnrollDeviceInput) 
   requireDeviceArea(cleanInput);
 
   try {
-    return createDevice({
-      id: randomUUID(),
-      ...cleanInput,
-    });
+    return db.transaction(() => {
+      const device = createDevice({ id: randomUUID(), ...cleanInput });
+      recordAudit(principal, {
+        organizationId: device.organizationId,
+        action: 'device.enrolled',
+        entityType: 'device',
+        entityId: device.id,
+        details: { after: device },
+      });
+      return device;
+    })();
   } catch (error) {
     if (isUniqueConstraint(error))
       throw new AppError(409, 'A device with this address already exists in the network');
@@ -247,9 +303,19 @@ export function updateDeviceFor(principal: Principal, id: string, input: EnrollD
   const cleanInput = cleanDeviceInput(input);
   requireDeviceArea(cleanInput);
   try {
-    const result = updateDevice({ id, ...cleanInput });
-    if (!result) throw new AppError(404, 'Device not found');
-    return result;
+    return db.transaction(() => {
+      const before = getDevice(id, cleanInput.organizationId);
+      const result = before && updateDevice({ id, ...cleanInput });
+      if (!result) throw new AppError(404, 'Device not found');
+      recordAudit(principal, {
+        organizationId: result.organizationId,
+        action: 'device.updated',
+        entityType: 'device',
+        entityId: result.id,
+        details: { before, after: result },
+      });
+      return result;
+    })();
   } catch (error) {
     if (isUniqueConstraint(error))
       throw new AppError(409, 'A device with this address already exists in the network');
@@ -258,7 +324,18 @@ export function updateDeviceFor(principal: Principal, id: string, input: EnrollD
 }
 
 export function deleteDeviceFor(principal: Principal, id: string, input: { organizationId: string }) {
-  requireNetworkManager(principal, input.organizationId);
-  if (!deleteDevice(id, input.organizationId)) throw new AppError(404, 'Device not found');
-  return { ok: true as const };
+  if (principal.serviceToken) throw new AppError(403, 'Engineer account required to manage networks');
+  requirePermission(principal, input.organizationId, 'device.delete');
+  return db.transaction(() => {
+    const before = getDevice(id, input.organizationId);
+    if (!before || !deleteDevice(id, input.organizationId)) throw new AppError(404, 'Device not found');
+    recordAudit(principal, {
+      organizationId: before.organizationId,
+      action: 'device.deleted',
+      entityType: 'device',
+      entityId: before.id,
+      details: { before },
+    });
+    return { ok: true as const };
+  })();
 }

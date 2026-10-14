@@ -8,9 +8,12 @@ import { closeDatabase, migrateDatabase } from './persistence/database.ts';
 import { seedDatabase } from './persistence/seed.ts';
 import { registerErrorHandling } from './http/error-handler.ts';
 import './http/request-context.ts';
+import { registerAuditRoutes } from './modules/audit/audit.routes.ts';
 import { registerAuthRoutes } from './modules/auth/auth.routes.ts';
 import { registerInvitationRoutes } from './modules/invitations/invitation.routes.ts';
 import { registerNetworkRoutes } from './modules/networks/network.routes.ts';
+import { registerOrganizationRoutes } from './modules/organizations/organization.routes.ts';
+import { registerTeamRoutes } from './modules/teams/team.routes.ts';
 
 export async function createApp() {
   migrateDatabase();
@@ -50,5 +53,8 @@ export async function createApp() {
   registerAuthRoutes(app);
   registerInvitationRoutes(app);
   registerNetworkRoutes(app);
+  registerOrganizationRoutes(app);
+  registerTeamRoutes(app);
+  registerAuditRoutes(app);
   return app;
 }

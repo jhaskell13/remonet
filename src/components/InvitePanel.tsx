@@ -1,11 +1,21 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api/client.ts';
 import type { Team } from '../../shared/network.ts';
+import { assignableRoles, hasPermission, invitableRoles } from '../../shared/permissions.ts';
 import type { OrganizationRole } from '../types.ts';
+import { roleLabels } from '../lib/roles.ts';
 
 type InviteRole = Exclude<OrganizationRole, 'owner'>;
 
-export function InvitePanel({ organizationId, role }: { organizationId: string; role: OrganizationRole }) {
+export function InvitePanel({
+  organizationId,
+  role,
+  onInvited,
+}: {
+  organizationId: string;
+  role: OrganizationRole;
+  onInvited?: () => void;
+}) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loadedOrganizationId, setLoadedOrganizationId] = useState('');
   const [teamId, setTeamId] = useState('');
@@ -14,9 +24,10 @@ export function InvitePanel({ organizationId, role }: { organizationId: string; 
   const [inviteUrl, setInviteUrl] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const canInvite = hasPermission(role, 'members.manage');
   useEffect(() => {
     let active = true;
-    if (!organizationId) {
+    if (!organizationId || !canInvite) {
       return () => {
         active = false;
       };
@@ -36,7 +47,7 @@ export function InvitePanel({ organizationId, role }: { organizationId: string; 
     return () => {
       active = false;
     };
-  }, [organizationId]);
+  }, [organizationId, canInvite]);
   const availableTeams = loadedOrganizationId === organizationId ? teams : [];
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -53,13 +64,15 @@ export function InvitePanel({ organizationId, role }: { organizationId: string; 
       setInviteUrl(result.inviteUrl);
       setMessage('Invitation link created. Copy and send it to your teammate.');
       setEmail('');
+      onInvited?.();
     } catch (reason) {
       setMessage(reason instanceof Error ? reason.message : 'Could not create invitation.');
     } finally {
       setBusy(false);
     }
   }
-  if (role !== 'owner' && role !== 'admin')
+  const roleOptions = invitableRoles.filter((option) => assignableRoles(role).includes(option));
+  if (!canInvite)
     return (
       <section className="panel invite-panel">
         <h2>Team invitations</h2>
@@ -96,9 +109,11 @@ export function InvitePanel({ organizationId, role }: { organizationId: string; 
         <label>
           Role
           <select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as InviteRole)}>
-            <option value="viewer">Viewer</option>
-            <option value="operator">Operator</option>
-            <option value="admin">Admin</option>
+            {roleOptions.map((option) => (
+              <option key={option} value={option}>
+                {roleLabels[option]}
+              </option>
+            ))}
           </select>
         </label>
         <button

@@ -1419,3 +1419,210 @@ tbody tr:last-child td {
 .settings-panel {
   margin-bottom: 14px;
 }
+
+/* Organization switching and administration */
+.workspace-switcher {
+  position: relative;
+}
+.workspace {
+  cursor: pointer;
+  font: inherit;
+}
+.workspace:hover {
+  border-color: #3a4d68;
+}
+.workspace-text small .role-badge {
+  font-size: 8px;
+}
+.workspace-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  background: #18253a;
+  border: 1px solid #2d3f58;
+  border-radius: 8px;
+  padding: 5px;
+  display: grid;
+  gap: 2px;
+  box-shadow: 0 12px 30px #0b152580;
+}
+.workspace-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: #c3ccda;
+  padding: 8px 9px;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.workspace-menu button span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-menu button:hover,
+.workspace-menu button.selected {
+  background: #1d3554;
+  color: #fff;
+}
+.workspace-menu .workspace-menu-create {
+  border-top: 1px solid #2d3f58;
+  border-radius: 0;
+  margin-top: 3px;
+  padding-top: 9px;
+  color: #85b7ff;
+}
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 7px;
+  border-radius: 9px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.role-badge.role-owner {
+  background: #efe8fb;
+  color: #6f46b5;
+}
+.role-badge.role-admin {
+  background: #e6f0fd;
+  color: #2f6fc4;
+}
+.role-badge.role-operator {
+  background: #ebf8f1;
+  color: #229b6b;
+}
+.role-badge.role-viewer {
+  background: #eef1f5;
+  color: #6b7a8f;
+}
+.breadcrumbs + .top-actions .live-indicator .role-badge {
+  margin-right: 2px;
+}
+.organization-header .panel-header p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.organization-facts {
+  display: flex;
+  gap: 26px;
+  border-top: 1px solid #eef1f5;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+.organization-facts > div {
+  display: grid;
+  gap: 3px;
+}
+.organization-facts b {
+  font-size: 15px;
+  color: #253247;
+}
+.organization-facts small {
+  font-size: 9px;
+  color: #8f9baa;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.organization-owners b {
+  font-size: 11px;
+  line-height: 19px;
+}
+.member-row {
+  border-top: 1px solid #eef1f5;
+  padding: 12px 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) 2fr;
+  gap: 14px;
+  align-items: start;
+}
+.member-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.member-identity > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.member-identity b {
+  font-size: 11px;
+  color: #344054;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.member-identity small {
+  font-size: 9px;
+  color: #8f9baa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.member-you,
+.member-inactive {
+  font-size: 8px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 1px 6px;
+  background: #eef1f5;
+  color: #6b7a8f;
+}
+.member-inactive {
+  background: #fff0ef;
+  color: #ce615a;
+}
+.member-teams {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.member-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.member-team-name {
+  font-size: 10px;
+  color: #455368;
+  min-width: 120px;
+}
+.member-team select,
+.member-add select {
+  height: 26px;
+  border: 1px solid #e0e7ef;
+  border-radius: 5px;
+  background: #fff;
+  color: #455469;
+  padding: 0 6px;
+  font-size: 10px;
+}
+.member-add .primary-button,
+.member-add .outline-button {
+  height: 26px;
+  padding: 0 10px;
+  margin: 0;
+}
+.members-panel .text-button {
+  font-size: 10px;
+}
+@media (max-width: 900px) {
+  .member-row {
+    grid-template-columns: 1fr;
+  }
+}

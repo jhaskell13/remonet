@@ -1,11 +1,15 @@
 import type {
   AccessRole,
   Area,
+  AuditEvent,
   Device,
   Network,
   Organization,
+  OrganizationMember,
   OrganizationMembership,
+  PendingInvitation,
   Team,
+  TeamMembership,
 } from '../../shared/network.ts';
 
 export type Scope = {
@@ -34,4 +38,14 @@ export type InvitationRecord = {
   accountExists: boolean;
 };
 export type { AccessRole };
-export type { Area, Device, Network, Organization, Team };
+export type {
+  Area,
+  AuditEvent,
+  Device,
+  Network,
+  Organization,
+  OrganizationMember,
+  PendingInvitation,
+  Team,
+  TeamMembership,
+};

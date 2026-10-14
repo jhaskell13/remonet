@@ -1,9 +1,28 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DashboardViews, type DashboardPage, type DeviceFilter } from './DashboardViews.tsx';
+import { RoleBadge } from './RoleBadge.tsx';
+import { roleLabels } from '../lib/roles.ts';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher.tsx';
 import { api, ApiError } from '../api/client.ts';
 import { getAreaSummaries, getOverview } from '../lib/network-metrics.ts';
 import type { Area, Device, Network } from '../../shared/network.ts';
+import { hasPermission } from '../../shared/permissions.ts';
 import type { OrganizationMembership, Session } from '../types.ts';
+
+const selectionKey = (userId: string) => `remonet.organization.${userId}`;
+function rememberedOrganization(userId: string, organizations: OrganizationMembership[]) {
+  try {
+    const stored = window.localStorage.getItem(selectionKey(userId));
+    if (
+      stored !== null &&
+      (stored === '' || organizations.some((organization) => organization.id === stored))
+    )
+      return stored;
+  } catch {
+    /* Storage may be unavailable; fall back to the first organization. */
+  }
+  return organizations[0]?.id ?? '';
+}
 
 const nav: { name: DashboardPage; icon: string }[] = [
   { name: 'Overview', icon: '◫' },
@@ -16,16 +35,43 @@ function Dashboard({
   user,
   organizations,
   onLogout,
+  onSessionChanged,
 }: {
   user: Session['user'];
   organizations: OrganizationMembership[];
   onLogout: () => void;
+  onSessionChanged: () => Promise<void>;
 }) {
   const [page, setPage] = useState<DashboardPage>('Overview');
+  const [createOrganizationRequest, setCreateOrganizationRequest] = useState(0);
+  function navigate(nextPage: DashboardPage) {
+    setPage(nextPage);
+    setCreateOrganizationRequest(0);
+  }
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<DeviceFilter>('All devices');
-  const [organizationId, setOrganizationId] = useState(organizations[0]?.id ?? '');
+  const [selectedOrganizationId, setOrganizationId] = useState(() =>
+    rememberedOrganization(user.id, organizations),
+  );
   const [networkId, setNetworkId] = useState('');
+  // Membership can be revoked while signed in; fall back to the first organization rather than
+  // keeping a selection the account can no longer see.
+  const organizationId =
+    selectedOrganizationId &&
+    !organizations.some((organization) => organization.id === selectedOrganizationId)
+      ? (organizations[0]?.id ?? '')
+      : selectedOrganizationId;
+  const currentOrganization = organizations.find((organization) => organization.id === organizationId);
+  function selectOrganization(nextOrganizationId: string) {
+    setOrganizationId(nextOrganizationId);
+    setNetworkId('');
+    setCreateOrganizationRequest(0);
+    try {
+      window.localStorage.setItem(selectionKey(user.id), nextOrganizationId);
+    } catch {
+      /* Storage is optional. */
+    }
+  }
   const [networks, setNetworks] = useState<Network[]>([]);
   const [dataVersion, setDataVersion] = useState(0);
   const [areas, setAreas] = useState<Area[]>([]);
@@ -82,12 +128,8 @@ function Dashboard({
     [query, filter, devices, areas],
   );
   const areaSummaries = getAreaSummaries(devices, areas);
-  const canManageNetworks = ['owner', 'admin'].includes(
-    organizations.find((org) => org.id === organizationId)?.role ?? '',
-  );
-  const canEnrollDevices = ['owner', 'admin', 'operator'].includes(
-    organizations.find((org) => org.id === organizationId)?.role ?? '',
-  );
+  const canManageNetworks = hasPermission(currentOrganization?.role, 'network.manage');
+  const canEnrollDevices = hasPermission(currentOrganization?.role, 'device.enroll');
   if (loading && !devices.length && !dataError)
     return <div className="auth-loading">Loading your network…</div>;
   return (
@@ -105,21 +147,23 @@ function Dashboard({
           </span>
         </div>
         <div className="workspace-label">WORKSPACE</div>
-        <div className="workspace">
-          <span className="workspace-icon">
-            {(organizations.find((org) => org.id === organizationId)?.name ?? 'R').slice(0, 1)}
-          </span>
-          <span className="workspace-text">
-            <b>{organizations.find((org) => org.id === organizationId)?.name ?? 'No organization'}</b>
-            <small>{user.email}</small>
-          </span>
-        </div>
+        <WorkspaceSwitcher
+          organizations={organizations}
+          organizationId={organizationId}
+          email={user.email}
+          onSelect={selectOrganization}
+          onCreate={() => {
+            selectOrganization('');
+            setPage('Organization');
+            setCreateOrganizationRequest((request) => request + 1);
+          }}
+        />
         <div className="nav-label">MONITOR</div>
         <nav>
           {nav.map((item) => (
             <button
               key={item.name}
-              onClick={() => setPage(item.name)}
+              onClick={() => navigate(item.name)}
               className={`nav-item ${page === item.name ? 'active' : ''}`}
             >
               <span className="nav-icon">{item.icon}</span>
@@ -131,7 +175,14 @@ function Dashboard({
         <div className="sidebar-bottom">
           <div className="nav-label">SYSTEM</div>
           <button
-            onClick={() => setPage('Settings')}
+            onClick={() => navigate('Organization')}
+            className={`nav-item ${page === 'Organization' ? 'active' : ''}`}
+          >
+            <span className="nav-icon">◎</span>Organization
+            <span className="nav-count">{organizations.length}</span>
+          </button>
+          <button
+            onClick={() => navigate('Settings')}
             className={`nav-item ${page === 'Settings' ? 'active' : ''}`}
           >
             <span className="nav-icon">⚙</span>Settings
@@ -140,7 +191,7 @@ function Dashboard({
             <span className="help-icon">?</span>
             <b>Need a hand?</b>
             <p>Visit the docs or contact your workspace admin.</p>
-            <button onClick={() => setPage('Settings')}>
+            <button onClick={() => navigate('Settings')}>
               Open documentation <span>↗</span>
             </button>
           </div>
@@ -159,13 +210,18 @@ function Dashboard({
       <main className="main-area">
         <header className="topbar">
           <div className="breadcrumbs">
-            {organizations.find((org) => org.id === organizationId)?.name ?? 'RemoNet'} <span>/</span>{' '}
-            <b>{page}</b>
+            {currentOrganization?.name ?? 'All organizations'} <span>/</span> <b>{page}</b>
           </div>
           <div className="top-actions">
-            <span className="live-indicator">
-              <i></i> API session active
-            </span>
+            {currentOrganization ? (
+              <span className="live-indicator" title={`Your role in ${currentOrganization.name}`}>
+                <RoleBadge role={currentOrganization.role} /> in {currentOrganization.name}
+              </span>
+            ) : (
+              <span className="live-indicator">
+                <i></i> {organizations.length} {organizations.length === 1 ? 'organization' : 'organizations'}
+              </span>
+            )}
             <div className="top-avatar">{user.displayName.slice(0, 2).toUpperCase()}</div>
           </div>
         </header>
@@ -188,17 +244,16 @@ function Dashboard({
                         ? 'Network health across your locations.'
                         : page === 'Activity'
                           ? 'Recent events from across your network.'
-                          : 'Manage your workspace preferences.'}
+                          : page === 'Organization'
+                            ? 'Teams, members, roles, and invitations for the selected organization.'
+                            : 'Manage your workspace preferences.'}
               </p>
             </div>
             <div className="heading-actions">
               <select
                 aria-label="Organization"
                 value={organizationId}
-                onChange={(event) => {
-                  setOrganizationId(event.target.value);
-                  setNetworkId('');
-                }}
+                onChange={(event) => selectOrganization(event.target.value)}
               >
                 <option value="">All organizations</option>
                 {organizations.map((org) => (
@@ -220,7 +275,11 @@ function Dashboard({
                 ))}
               </select>
               <span className="read-only-badge">
-                {page === 'Settings' && canManageNetworks ? 'Admin controls' : 'Read only'}
+                {!currentOrganization
+                  ? 'Read only'
+                  : currentOrganization.role === 'viewer'
+                    ? 'Viewer · read only'
+                    : `${roleLabels[currentOrganization.role]} controls`}
               </span>
             </div>
           </div>
@@ -235,7 +294,7 @@ function Dashboard({
             onQueryChange={setQuery}
             filter={filter}
             onFilterChange={setFilter}
-            onNavigate={setPage}
+            onNavigate={navigate}
             user={user}
             organizations={organizations}
             organizationId={organizationId}
@@ -244,6 +303,10 @@ function Dashboard({
             onResourcesChanged={() => setDataVersion((version) => version + 1)}
             canManageNetworks={canManageNetworks}
             canEnrollDevices={canEnrollDevices}
+            onSelectOrganization={selectOrganization}
+            onSessionChanged={onSessionChanged}
+            onLogout={onLogout}
+            createOrganizationRequest={createOrganizationRequest}
           />
           <footer className="footer">
             <span>

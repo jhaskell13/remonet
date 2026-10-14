@@ -1,13 +1,14 @@
 import type { Area, AreaSummary, Device, Network, NetworkOverview } from '../../shared/network.ts';
 import type { OrganizationMembership, Session } from '../types.ts';
 import { DeviceTable, Stat, Topology } from './NetworkWidgets.tsx';
-import { InvitePanel } from './InvitePanel.tsx';
+import { OrganizationPage } from './OrganizationPage.tsx';
 import { NetworkManagement } from './NetworkManagement.tsx';
 import { AreaManagement } from './AreaManagement.tsx';
 import { DeviceEnrollment } from './DeviceEnrollment.tsx';
 import { DeviceManagement } from './DeviceManagement.tsx';
 
-export type DashboardPage = 'Overview' | 'Devices' | 'Topology' | 'Areas' | 'Activity' | 'Settings';
+export type DashboardPage =
+  'Overview' | 'Devices' | 'Topology' | 'Areas' | 'Activity' | 'Organization' | 'Settings';
 export type DeviceFilter = 'All devices' | 'Pending' | 'Healthy' | 'Warning' | 'Offline';
 type DashboardViewsProps = {
   page: DashboardPage;
@@ -29,6 +30,10 @@ type DashboardViewsProps = {
   onResourcesChanged: () => void;
   canManageNetworks: boolean;
   canEnrollDevices: boolean;
+  onSelectOrganization: (organizationId: string) => void;
+  onSessionChanged: () => Promise<void>;
+  onLogout: () => void;
+  createOrganizationRequest: number;
 };
 const statusClass = (status: string) => status.toLowerCase();
 export function DashboardViews(props: DashboardViewsProps) {
@@ -52,6 +57,10 @@ export function DashboardViews(props: DashboardViewsProps) {
     onResourcesChanged,
     canManageNetworks,
     canEnrollDevices,
+    onSelectOrganization,
+    onSessionChanged,
+    onLogout,
+    createOrganizationRequest,
   } = props;
   return (
     <>
@@ -389,6 +398,17 @@ export function DashboardViews(props: DashboardViewsProps) {
           ))}
         </section>
       )}
+      {page === 'Organization' && (
+        <OrganizationPage
+          user={user}
+          organizations={organizations}
+          organizationId={organizationId}
+          onSelectOrganization={onSelectOrganization}
+          onSessionChanged={onSessionChanged}
+          onLogout={onLogout}
+          createRequest={createOrganizationRequest}
+        />
+      )}
       {page === 'Settings' && (
         <>
           <NetworkManagement
@@ -427,7 +447,9 @@ export function DashboardViews(props: DashboardViewsProps) {
                 <b>Organization access</b>
                 <small>Your membership controls which organizations and networks are available.</small>
               </div>
-              <span>{organizations.length} organizations</span>
+              <button className="text-button" onClick={() => onNavigate('Organization')}>
+                {organizations.length} {organizations.length === 1 ? 'organization' : 'organizations'} →
+              </button>
             </div>
             <div className="settings-row">
               <div>
@@ -439,10 +461,6 @@ export function DashboardViews(props: DashboardViewsProps) {
               </span>
             </div>
           </section>
-          <InvitePanel
-            organizationId={organizationId}
-            role={organizations.find((org) => org.id === organizationId)?.role ?? 'viewer'}
-          />
         </>
       )}
     </>

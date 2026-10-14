@@ -138,6 +138,13 @@ export function updateDevice(input: Omit<NewDevice, 'id'> & { id: string }): Dev
     )
     .get(input.id, input.organizationId, input.networkId) as Device;
 }
+export function getDevice(id: string, organizationId: string) {
+  return db
+    .prepare(
+      'SELECT id, organization_id AS organizationId, network_id AS networkId, area_id AS areaId, name, type, address, status, uptime, latency, load, last_seen AS lastSeen FROM devices WHERE id = ? AND organization_id = ?',
+    )
+    .get(id, organizationId) as Device | undefined;
+}
 export function deleteDevice(id: string, organizationId: string) {
   return db.prepare('DELETE FROM devices WHERE id = ? AND organization_id = ?').run(id, organizationId)
     .changes;
