@@ -62,6 +62,8 @@ describe('NetworkManagement', () => {
       organizationId,
       name: 'DMZ',
       description: 'Public services',
+      monitoringEnabled: true,
+      pollIntervalSeconds: 60,
     });
     expect(onChanged).toHaveBeenCalled();
     expect(screen.queryByLabelText(/network name/i)).toBeNull();
@@ -80,6 +82,35 @@ describe('NetworkManagement', () => {
       organizationId,
       name: 'Branch Network v2',
       description: '',
+      monitoringEnabled: false,
+      pollIntervalSeconds: 60,
+    });
+  });
+
+  it('shows each network’s collection settings and lets admins change them', async () => {
+    const { api } = renderPanel();
+    const core = screen.getByText('Core Network').closest('.network-management-row') as HTMLElement;
+    expect(within(core).getByText('Checked every 30 s')).toBeTruthy();
+    const branch = screen.getByText('Branch Network').closest('.network-management-row') as HTMLElement;
+    expect(within(branch).getByText('Monitoring paused')).toBeTruthy();
+
+    await userEvent.click(within(core).getByRole('button', { name: 'Edit' }));
+    const toggle = screen.getByLabelText(/collect observations/i) as HTMLInputElement;
+    const interval = screen.getByLabelText(/poll interval/i) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    expect(interval.value).toBe('30');
+    expect(interval.min).toBe('5');
+    expect(interval.max).toBe('3600');
+    await userEvent.click(toggle);
+    await userEvent.clear(interval);
+    await userEvent.type(interval, '120');
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    expect(api.updateNetwork).toHaveBeenCalledWith('net-core', {
+      organizationId,
+      name: 'Core Network',
+      description: 'Data center and campus',
+      monitoringEnabled: false,
+      pollIntervalSeconds: 120,
     });
   });
 

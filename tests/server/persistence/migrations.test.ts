@@ -58,6 +58,8 @@ describe('migration runner', () => {
       '006_audit_log',
       '007_audit_log_entity_types',
       '008_team_name_uniqueness',
+      '009_device_observations',
+      '010_network_monitoring_settings',
     ]);
     for (const row of rows) {
       const sql = readFileSync(resolve(migrationsDirectory, `${row.id}.sql`), 'utf8').replace(/\r\n/g, '\n');
@@ -70,6 +72,7 @@ describe('migration runner', () => {
     expect(tableNames()).toEqual([
       'areas',
       'audit_log',
+      'device_observations',
       'devices',
       'invitations',
       'migrations',
@@ -92,6 +95,9 @@ describe('migration runner', () => {
         'sessions_expiry',
         'audit_log_organization_created',
         'audit_log_entity',
+        'devices_identity',
+        'device_observations_device_collected',
+        'device_observations_organization_collected',
       ]),
     );
     const uniqueIndexes = (
@@ -101,6 +107,7 @@ describe('migration runner', () => {
     ).map((row) => row.name);
     expect(uniqueIndexes.sort()).toEqual([
       'areas_network_name',
+      'devices_identity',
       'devices_network_address',
       'networks_organization_name',
       'teams_organization_name',
@@ -110,7 +117,7 @@ describe('migration runner', () => {
         name: string;
       }[]
     ).map((row) => row.name);
-    expect(triggers).toEqual(['audit_log_no_delete', 'audit_log_no_update']);
+    expect(triggers).toEqual(['audit_log_no_delete', 'audit_log_no_update', 'device_observations_no_update']);
   });
 
   it('uses STRICT tables so column types are enforced', () => {
@@ -225,6 +232,72 @@ describe('migration runner', () => {
         )
         .run(),
     ).not.toThrow();
+    expect(upgrade.pragma('foreign_key_check')).toEqual([]);
+    upgrade.close();
+  });
+
+  it('010 gives existing networks default monitoring settings and bounds new ones', () => {
+    const columns = db.prepare('PRAGMA table_info(networks)').all() as { name: string; dflt_value: string }[];
+    expect(columns.find((column) => column.name === 'monitoring_enabled')?.dflt_value).toBe('1');
+    expect(columns.find((column) => column.name === 'poll_interval_seconds')?.dflt_value).toBe('60');
+    db.prepare("INSERT INTO organizations (id, name) VALUES ('org-n', 'N')").run();
+    const insert = (id: string, interval: number, enabled = 1) =>
+      db
+        .prepare(
+          "INSERT INTO networks (id, organization_id, name, description, monitoring_enabled, poll_interval_seconds) VALUES (?, 'org-n', ?, '', ?, ?)",
+        )
+        .run(id, id, enabled, interval);
+    expect(() => insert('net-n1', 5)).not.toThrow();
+    expect(() => insert('net-n2', 3600)).not.toThrow();
+    expect(() => insert('net-n3', 4)).toThrow(/CHECK/);
+    expect(() => insert('net-n4', 3601)).toThrow(/CHECK/);
+    expect(() => insert('net-n5', 60, 2)).toThrow(/CHECK/);
+    db.prepare(
+      "INSERT INTO networks (id, organization_id, name, description) VALUES ('net-n6', 'org-n', 'n6', '')",
+    ).run();
+    expect(
+      db
+        .prepare(
+          'SELECT monitoring_enabled AS enabled, poll_interval_seconds AS interval FROM networks WHERE id = ?',
+        )
+        .get('net-n6'),
+    ).toEqual({ enabled: 1, interval: 60 });
+    db.prepare("DELETE FROM organizations WHERE id = 'org-n'").run();
+  });
+
+  it('009 adds immutable, device-scoped observations that follow their device', () => {
+    // Upgrade path: a database that stopped at 008 with inventory present.
+    const upgrade = new Database(':memory:');
+    upgrade.pragma('foreign_keys = ON');
+    const apply = (file: string) => upgrade.exec(readFileSync(resolve(migrationsDirectory, file), 'utf8'));
+    for (const file of migrationFiles.filter((candidate) => candidate < '009_')) apply(file);
+    upgrade.exec(`
+      INSERT INTO organizations (id, name) VALUES ('org-u', 'Upgrade'), ('org-v', 'Other');
+      INSERT INTO networks (id, organization_id, name, description) VALUES ('net-u', 'org-u', 'N', ''), ('net-v', 'org-v', 'N', '');
+      INSERT INTO areas (id, organization_id, network_id, name, region) VALUES ('area-u', 'org-u', 'net-u', 'A', 'R');
+      INSERT INTO devices (id, organization_id, network_id, area_id, name, type, address, status, uptime, latency, load, last_seen)
+        VALUES ('dev-u', 'org-u', 'net-u', 'area-u', 'D', 'Router', '10.0.0.1', 'Pending', 'Not measured', 0, 0, NULL);
+    `);
+    apply('009_device_observations.sql');
+    const insert = (id: string, organizationId: string, networkId: string, extra = '') =>
+      upgrade
+        .prepare(
+          `INSERT INTO device_observations (id, organization_id, network_id, device_id, source, result, latency_ms, load_percent, uptime_seconds, error_message, collected_at, created_at) VALUES (?, ?, ?, 'dev-u', 'simulator', 'success', ${extra || '4, 32, 60, NULL'}, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+        )
+        .run(id, organizationId, networkId);
+    expect(() => insert('obs-1', 'org-u', 'net-u')).not.toThrow();
+    expect(() => insert('obs-2', 'org-v', 'net-u'), 'organization of another tenant').toThrow(/FOREIGN KEY/);
+    expect(() => insert('obs-3', 'org-u', 'net-v'), 'network the device is not in').toThrow(/FOREIGN KEY/);
+    expect(() => insert('obs-4', 'org-u', 'net-u', '-1, 32, 60, NULL'), 'negative latency').toThrow(/CHECK/);
+    expect(() => insert('obs-5', 'org-u', 'net-u', '4, 120, 60, NULL'), 'load above 100%').toThrow(/CHECK/);
+    expect(() =>
+      upgrade.prepare("UPDATE device_observations SET result = 'error' WHERE id = 'obs-1'").run(),
+    ).toThrow(/immutable/);
+    // Retention pruning must stay possible, and removing a device removes its history.
+    expect(upgrade.prepare("DELETE FROM device_observations WHERE id = 'obs-1'").run().changes).toBe(1);
+    insert('obs-6', 'org-u', 'net-u');
+    upgrade.prepare("DELETE FROM devices WHERE id = 'dev-u'").run();
+    expect(upgrade.prepare('SELECT COUNT(*) AS count FROM device_observations').get()).toEqual({ count: 0 });
     expect(upgrade.pragma('foreign_key_check')).toEqual([]);
     upgrade.close();
   });

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import type { Principal } from '../../auth.ts';
-import type { DeviceType } from '../../../shared/network.ts';
+import { pollIntervalBounds, type DeviceType } from '../../../shared/network.ts';
 import { AppError } from '../../http/app-error.ts';
 import { db } from '../../persistence/database.ts';
 import {
@@ -18,7 +18,9 @@ import {
   updateNetwork,
 } from '../../persistence/repositories/network-repository.ts';
 import { requirePermission } from '../../authorization.ts';
+import { requestDeviceCheck } from '../../collectors/runtime.ts';
 import { recordAudit } from '../audit/audit.service.ts';
+import { publishMonitoringEvent, type MonitoringEvent } from '../monitoring/events.ts';
 import {
   getOverview,
   listAreas,
@@ -28,6 +30,12 @@ import {
   listTeams,
 } from '../../store.ts';
 import type { Scope } from '../../persistence/types.ts';
+
+type InventoryChange = Extract<MonitoringEvent, { type: 'inventory' }>;
+/** Tells connected dashboards that inventory changed; called after the change was committed. */
+function announce(change: Omit<InventoryChange, 'type'>) {
+  publishMonitoringEvent({ type: 'inventory', ...change });
+}
 
 export function readScope(
   principal: Principal,
@@ -84,7 +92,13 @@ export function teamsFor(principal: Principal, filters: { organizationId?: strin
   });
 }
 
-export type NetworkInput = { organizationId: string; name: string; description: string };
+export type NetworkInput = {
+  organizationId: string;
+  name: string;
+  description: string;
+  monitoringEnabled?: boolean | undefined;
+  pollIntervalSeconds?: number | undefined;
+};
 
 function requireNetworkManager(principal: Principal, organizationId: string) {
   if (principal.serviceToken) throw new AppError(403, 'Engineer account required to manage networks');
@@ -94,10 +108,22 @@ function requireNetworkManager(principal: Principal, organizationId: string) {
 function cleanNetworkInput(input: NetworkInput) {
   const name = input.name.trim();
   if (!name) throw new AppError(400, 'Network name is required');
+  if (
+    input.pollIntervalSeconds !== undefined &&
+    (!Number.isInteger(input.pollIntervalSeconds) ||
+      input.pollIntervalSeconds < pollIntervalBounds.min ||
+      input.pollIntervalSeconds > pollIntervalBounds.max)
+  )
+    throw new AppError(
+      400,
+      `Poll interval must be a whole number of seconds between ${pollIntervalBounds.min} and ${pollIntervalBounds.max}`,
+    );
   return {
     organizationId: input.organizationId,
     name,
     description: input.description.trim(),
+    monitoringEnabled: input.monitoringEnabled,
+    pollIntervalSeconds: input.pollIntervalSeconds,
   };
 }
 
@@ -105,17 +131,25 @@ export function createNetworkFor(principal: Principal, input: NetworkInput) {
   requireNetworkManager(principal, input.organizationId);
   const cleanInput = cleanNetworkInput(input);
   try {
-    return db.transaction(() => {
-      const network = createNetwork({ id: randomUUID(), ...cleanInput });
+    const network = db.transaction(() => {
+      const created = createNetwork({ id: randomUUID(), ...cleanInput });
       recordAudit(principal, {
-        organizationId: network.organizationId,
+        organizationId: created.organizationId,
         action: 'network.created',
         entityType: 'network',
-        entityId: network.id,
-        details: { after: network },
+        entityId: created.id,
+        details: { after: created },
       });
-      return network;
+      return created;
     })();
+    announce({
+      organizationId: network.organizationId,
+      networkId: network.id,
+      entityType: 'network',
+      entityId: network.id,
+      action: 'created',
+    });
+    return network;
   } catch (error) {
     if (isUniqueConstraint(error)) throw new AppError(409, 'A network with this name already exists');
     throw error;
@@ -126,7 +160,7 @@ export function updateNetworkFor(principal: Principal, id: string, input: Networ
   requireNetworkManager(principal, input.organizationId);
   const cleanInput = cleanNetworkInput(input);
   try {
-    return db.transaction(() => {
+    const network = db.transaction(() => {
       const before = getNetwork(id, [cleanInput.organizationId]);
       const result = before && updateNetwork(id, [cleanInput.organizationId], cleanInput);
       if (!result) throw new AppError(404, 'Network not found');
@@ -139,6 +173,14 @@ export function updateNetworkFor(principal: Principal, id: string, input: Networ
       });
       return result;
     })();
+    announce({
+      organizationId: network.organizationId,
+      networkId: network.id,
+      entityType: 'network',
+      entityId: network.id,
+      action: 'updated',
+    });
+    return network;
   } catch (error) {
     if (isUniqueConstraint(error)) throw new AppError(409, 'A network with this name already exists');
     throw error;
@@ -173,17 +215,25 @@ export function createAreaFor(principal: Principal, input: AreaInput) {
   const cleanInput = cleanAreaInput(input);
   requireAreaNetwork(principal, cleanInput.organizationId, cleanInput.networkId);
   try {
-    return db.transaction(() => {
-      const area = createArea({ id: randomUUID(), ...cleanInput });
+    const area = db.transaction(() => {
+      const created = createArea({ id: randomUUID(), ...cleanInput });
       recordAudit(principal, {
-        organizationId: area.organizationId,
+        organizationId: created.organizationId,
         action: 'area.created',
         entityType: 'area',
-        entityId: area.id,
-        details: { after: area },
+        entityId: created.id,
+        details: { after: created },
       });
-      return area;
+      return created;
     })();
+    announce({
+      organizationId: area.organizationId,
+      networkId: area.networkId,
+      entityType: 'area',
+      entityId: area.id,
+      action: 'created',
+    });
+    return area;
   } catch (error) {
     if (isUniqueConstraint(error))
       throw new AppError(409, 'An area with this name already exists in the network');
@@ -195,7 +245,7 @@ export function updateAreaFor(principal: Principal, id: string, input: AreaInput
   const cleanInput = cleanAreaInput(input);
   requireAreaNetwork(principal, cleanInput.organizationId, cleanInput.networkId);
   try {
-    return db.transaction(() => {
+    const area = db.transaction(() => {
       const before = getArea(id, cleanInput.organizationId, cleanInput.networkId);
       const result =
         before &&
@@ -210,6 +260,14 @@ export function updateAreaFor(principal: Principal, id: string, input: AreaInput
       });
       return result;
     })();
+    announce({
+      organizationId: area.organizationId,
+      networkId: area.networkId,
+      entityType: 'area',
+      entityId: area.id,
+      action: 'updated',
+    });
+    return area;
   } catch (error) {
     if (isUniqueConstraint(error))
       throw new AppError(409, 'An area with this name already exists in the network');
@@ -222,20 +280,28 @@ export function deleteAreaFor(
   input: { organizationId: string; networkId: string },
 ) {
   requireAreaNetwork(principal, input.organizationId, input.networkId);
-  return db.transaction(() => {
-    const before = getArea(id, input.organizationId, input.networkId);
-    if (!before) throw new AppError(404, 'Area not found');
+  const before = db.transaction(() => {
+    const area = getArea(id, input.organizationId, input.networkId);
+    if (!area) throw new AppError(404, 'Area not found');
     if (!deleteAreaIfEmpty(id, input.organizationId, input.networkId))
       throw new AppError(409, 'Move or remove the devices in this area before deleting it');
     recordAudit(principal, {
-      organizationId: before.organizationId,
+      organizationId: area.organizationId,
       action: 'area.deleted',
       entityType: 'area',
-      entityId: before.id,
-      details: { before },
+      entityId: area.id,
+      details: { before: area },
     });
-    return { ok: true as const };
+    return area;
   })();
+  announce({
+    organizationId: before.organizationId,
+    networkId: before.networkId,
+    entityType: 'area',
+    entityId: before.id,
+    action: 'deleted',
+  });
+  return { ok: true as const };
 }
 
 export type EnrollDeviceInput = {
@@ -280,17 +346,27 @@ export function enrollDeviceFor(principal: Principal, input: EnrollDeviceInput) 
   requireDeviceArea(cleanInput);
 
   try {
-    return db.transaction(() => {
-      const device = createDevice({ id: randomUUID(), ...cleanInput });
+    const device = db.transaction(() => {
+      const created = createDevice({ id: randomUUID(), ...cleanInput });
       recordAudit(principal, {
-        organizationId: device.organizationId,
+        organizationId: created.organizationId,
         action: 'device.enrolled',
         entityType: 'device',
-        entityId: device.id,
-        details: { after: device },
+        entityId: created.id,
+        details: { after: created },
       });
-      return device;
+      return created;
     })();
+    announce({
+      organizationId: device.organizationId,
+      networkId: device.networkId,
+      entityType: 'device',
+      entityId: device.id,
+      action: 'created',
+    });
+    // A new device should not wait for its network's next cycle to leave Pending.
+    requestDeviceCheck(device);
+    return device;
   } catch (error) {
     if (isUniqueConstraint(error))
       throw new AppError(409, 'A device with this address already exists in the network');
@@ -303,7 +379,7 @@ export function updateDeviceFor(principal: Principal, id: string, input: EnrollD
   const cleanInput = cleanDeviceInput(input);
   requireDeviceArea(cleanInput);
   try {
-    return db.transaction(() => {
+    const { device, readdressed } = db.transaction(() => {
       const before = getDevice(id, cleanInput.organizationId);
       const result = before && updateDevice({ id, ...cleanInput });
       if (!result) throw new AppError(404, 'Device not found');
@@ -314,8 +390,18 @@ export function updateDeviceFor(principal: Principal, id: string, input: EnrollD
         entityId: result.id,
         details: { before, after: result },
       });
-      return result;
+      return { device: result, readdressed: before.address.toLowerCase() !== result.address.toLowerCase() };
     })();
+    announce({
+      organizationId: device.organizationId,
+      networkId: device.networkId,
+      entityType: 'device',
+      entityId: device.id,
+      action: 'updated',
+    });
+    // A re-addressed device is Pending again; check the new address right away.
+    if (readdressed) requestDeviceCheck(device);
+    return device;
   } catch (error) {
     if (isUniqueConstraint(error))
       throw new AppError(409, 'A device with this address already exists in the network');
@@ -326,16 +412,24 @@ export function updateDeviceFor(principal: Principal, id: string, input: EnrollD
 export function deleteDeviceFor(principal: Principal, id: string, input: { organizationId: string }) {
   if (principal.serviceToken) throw new AppError(403, 'Engineer account required to manage networks');
   requirePermission(principal, input.organizationId, 'device.delete');
-  return db.transaction(() => {
-    const before = getDevice(id, input.organizationId);
-    if (!before || !deleteDevice(id, input.organizationId)) throw new AppError(404, 'Device not found');
+  const before = db.transaction(() => {
+    const device = getDevice(id, input.organizationId);
+    if (!device || !deleteDevice(id, input.organizationId)) throw new AppError(404, 'Device not found');
     recordAudit(principal, {
-      organizationId: before.organizationId,
+      organizationId: device.organizationId,
       action: 'device.deleted',
       entityType: 'device',
-      entityId: before.id,
-      details: { before },
+      entityId: device.id,
+      details: { before: device },
     });
-    return { ok: true as const };
+    return device;
   })();
+  announce({
+    organizationId: before.organizationId,
+    networkId: before.networkId,
+    entityType: 'device',
+    entityId: before.id,
+    action: 'deleted',
+  });
+  return { ok: true as const };
 }

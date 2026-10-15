@@ -4,6 +4,7 @@ import { RoleBadge } from './RoleBadge.tsx';
 import { roleLabels } from '../lib/roles.ts';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher.tsx';
 import { api, ApiError } from '../api/client.ts';
+import { coalesce, subscribeToMonitoring, type LiveStatus } from '../lib/live-updates.ts';
 import { getAreaSummaries, getOverview } from '../lib/network-metrics.ts';
 import type { Area, Device, Network } from '../../shared/network.ts';
 import { hasPermission } from '../../shared/permissions.ts';
@@ -79,6 +80,20 @@ function Dashboard({
   const [overview, setOverview] = useState(getOverview([], []));
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState('');
+  const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting');
+  // Checks, cycles, and inventory changes are pushed by the API; each one refreshes the data
+  // shown here, so a device enrolled as Pending turns Healthy the moment its first check lands.
+  useEffect(() => {
+    const refresh = coalesce(() => setDataVersion((version) => version + 1));
+    const subscription = subscribeToMonitoring(organizationId ? { organizationId } : {}, {
+      onEvent: refresh,
+      onStatus: setLiveStatus,
+    });
+    return () => {
+      refresh.cancel();
+      subscription.close();
+    };
+  }, [organizationId]);
   useEffect(() => {
     let current = true;
     async function load() {
@@ -307,13 +322,22 @@ function Dashboard({
             onSessionChanged={onSessionChanged}
             onLogout={onLogout}
             createOrganizationRequest={createOrganizationRequest}
+            dataVersion={dataVersion}
           />
           <footer className="footer">
             <span>
               RemoNet <span>·</span> Network operations, made clearer.
             </span>
-            <span>
-              <i></i> API connected <span>·</span> v0.1.0
+            <span className={`live-status live-${liveStatus}`} role="status">
+              <i></i>{' '}
+              {liveStatus === 'live'
+                ? 'Live updates'
+                : liveStatus === 'connecting'
+                  ? 'Connecting live updates…'
+                  : liveStatus === 'reconnecting'
+                    ? 'Reconnecting live updates…'
+                    : 'Live updates unavailable'}{' '}
+              <span>·</span> v0.1.0
             </span>
           </footer>
         </section>

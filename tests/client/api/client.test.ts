@@ -153,6 +153,11 @@ describe('api client', () => {
         '/api/teams/team/members/u?organizationId=org-demo',
       ],
       [() => api.audit(), 'GET', '/api/audit'],
+      [
+        () => api.deviceObservations('dev', { organizationId, limit: 5 }),
+        'GET',
+        '/api/devices/dev/observations?organizationId=org-demo&limit=5',
+      ],
       [() => api.networks({ organizationId }), 'GET', '/api/networks?organizationId=org-demo'],
       [() => api.createNetwork({ organizationId, name: 'N', description: '' }), 'POST', '/api/networks'],
       [
@@ -202,6 +207,12 @@ describe('api client', () => {
         '/api/devices/dev',
       ],
       [() => api.deleteDevice('dev', organizationId), 'DELETE', '/api/devices/dev?organizationId=org-demo'],
+      [() => api.requestDeviceCheck('dev', organizationId), 'POST', '/api/devices/dev/check'],
+      [
+        () => api.monitoringStatus({ organizationId }),
+        'GET',
+        '/api/monitoring/status?organizationId=org-demo',
+      ],
       [() => api.areas({ networkId: 'net' }), 'GET', '/api/areas?networkId=net'],
       [() => api.devices(), 'GET', '/api/devices'],
       [

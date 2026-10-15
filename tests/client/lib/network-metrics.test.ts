@@ -28,7 +28,21 @@ describe('network metrics', () => {
       healthScore: 33.33,
       areas: 3,
     });
-    expect(Number.isNaN(Date.parse(overview.updatedAt))).toBe(false);
+    expect(overview.updatedAt).toBe('2026-10-12T13:40:00.000Z');
+  });
+
+  it('reports the newest last-seen time as the data freshness, or null without any', () => {
+    expect(getOverview([], []).updatedAt).toBeNull();
+    expect(
+      getOverview(
+        devices.filter((device) => device.status === 'Pending'),
+        areas,
+      ).updatedAt,
+    ).toBeNull();
+    const [router, firewall] = devices;
+    expect(
+      getOverview([{ ...firewall!, lastSeen: '2026-10-12T13:39:00.000Z' }, router!], areas).updatedAt,
+    ).toBe('2026-10-12T13:40:00.000Z');
   });
 
   it('excludes pending devices from the health score and handles empty inventories', () => {

@@ -31,6 +31,10 @@ export default defineConfig({
         test: {
           name: 'client',
           environment: 'jsdom',
+          // Creating a jsdom window per test file cost more than the tests themselves. `vmThreads`
+          // builds it once per worker and runs each file in its own VM context, so files stay
+          // isolated (fresh module registry, mocks, and DOM state) without paying for a new window.
+          pool: 'vmThreads',
           include: ['tests/client/**/*.test.{ts,tsx}'],
           setupFiles: ['tests/client/setup/environment.ts'],
           // User-event interactions through jsdom are slow on constrained machines.

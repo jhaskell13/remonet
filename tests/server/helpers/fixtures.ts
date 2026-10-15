@@ -64,7 +64,7 @@ export function seedTestData() {
   const seededAt = '2026-01-01T00:00:00.000Z';
   const insertOrganization = db.prepare('INSERT INTO organizations (id, name) VALUES (?, ?)');
   const insertNetwork = db.prepare(
-    'INSERT INTO networks (id, organization_id, name, description) VALUES (?, ?, ?, ?)',
+    'INSERT INTO networks (id, organization_id, name, description, monitoring_enabled, poll_interval_seconds) VALUES (?, ?, ?, ?, ?, ?)',
   );
   const insertArea = db.prepare(
     'INSERT INTO areas (id, organization_id, network_id, name, region) VALUES (?, ?, ?, ?, ?)',
@@ -82,7 +82,15 @@ export function seedTestData() {
 
   db.transaction(() => {
     for (const row of organizations) insertOrganization.run(row.id, row.name);
-    for (const row of networks) insertNetwork.run(row.id, row.organizationId, row.name, row.description);
+    for (const row of networks)
+      insertNetwork.run(
+        row.id,
+        row.organizationId,
+        row.name,
+        row.description,
+        row.monitoringEnabled ? 1 : 0,
+        row.pollIntervalSeconds,
+      );
     for (const row of areas) insertArea.run(row.id, row.organizationId, row.networkId, row.name, row.region);
     for (const row of devices)
       insertDevice.run(

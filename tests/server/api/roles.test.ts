@@ -49,6 +49,14 @@ const operations: Operation[] = [
     send: (c) => c.get('/api/overview'),
     allowed: ['owner', 'admin', 'operator', 'viewer'],
   },
+  {
+    name: 'read device history',
+    send: (c) =>
+      c.get(`/api/devices/${demo.coreRouterId}/observations`, {
+        query: { organizationId: demo.organizationId },
+      }),
+    allowed: ['owner', 'admin', 'operator', 'viewer'],
+  },
   { name: 'list teams', send: (c) => c.get('/api/teams'), allowed: ['owner', 'admin', 'operator', 'viewer'] },
   { name: 'create network', send: (c) => c.post('/api/networks', networkBody), allowed: ['owner', 'admin'] },
   {

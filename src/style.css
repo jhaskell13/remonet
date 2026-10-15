@@ -953,6 +953,13 @@ tbody tr:last-child td {
   box-shadow: none;
   margin-right: 4px;
 }
+.footer .live-connecting i,
+.footer .live-reconnecting i {
+  background: #e0a526;
+}
+.footer .live-unavailable i {
+  background: #c8ced6;
+}
 .full-panel {
   min-height: 300px;
 }
@@ -1086,6 +1093,88 @@ tbody tr:last-child td {
   font-size: 9px;
   color: #8f9baa;
 }
+.device-last-seen {
+  color: #a2adba;
+}
+.check-notice {
+  color: #4c82ce;
+}
+.data-freshness {
+  margin-top: 4px;
+  color: #a2adba;
+}
+.network-management-row.expanded {
+  border-bottom: 1px dashed #e6ebf1;
+}
+.observation-history {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 0 14px;
+  font-size: 10px;
+  color: #667588;
+}
+.observation-history + .network-management-row {
+  border-top: 1px solid #eef1f5;
+}
+.device-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.device-status-line .status-pill {
+  height: 16px;
+}
+.status-reason {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+  color: #8f9baa;
+}
+.device-status-line .status-reason {
+  display: inline;
+  margin: 0;
+}
+.check-notice.error {
+  color: #c05050;
+}
+.observation-history p {
+  margin: 0;
+}
+.observation-history-header {
+  display: grid;
+  gap: 3px;
+}
+.observation-history-header b {
+  font-size: 11px;
+  color: #455368;
+}
+.observation-history-header small {
+  color: #a2adba;
+}
+.observation-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.observation-table th {
+  text-align: left;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8f9baa;
+  padding: 4px 8px 6px 0;
+  border-bottom: 1px solid #e6ebf1;
+}
+.observation-table td {
+  padding: 6px 8px 6px 0;
+  border-bottom: 1px solid #eef1f5;
+  vertical-align: middle;
+  color: #556375;
+}
+.observation-table tr:last-child td {
+  border-bottom: 0;
+}
 .management-actions {
   display: flex;
   align-items: center;
@@ -1110,6 +1199,14 @@ tbody tr:last-child td {
   color: #667588;
   font-size: 10px;
   font-weight: 600;
+}
+.network-form .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.network-form .checkbox-label input {
+  width: auto;
 }
 .network-form input,
 .network-form textarea {

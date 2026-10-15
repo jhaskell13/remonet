@@ -14,6 +14,9 @@ describe('DeviceTable', () => {
     expect(within(router).getByText('North Campus')).toBeTruthy();
     expect(within(router).getByText('10.20.0.1')).toBeTruthy();
     expect(within(router).getByText('Healthy')).toBeTruthy();
+    expect(within(router).getByText('Healthy').getAttribute('title')).toBe('answered in 4 ms at 10% load');
+    expect(within(router).getByText('answered in 4 ms at 10% load')).toBeTruthy();
+    expect(within(rows[1]!).getByText('latency 28 ms is above the 25 ms limit')).toBeTruthy();
     expect(within(router).getByText('4 ms')).toBeTruthy();
     // Offline and pending devices have no meaningful latency.
     expect(within(rows[2]!).getByText('—')).toBeTruthy();

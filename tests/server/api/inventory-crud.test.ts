@@ -24,6 +24,8 @@ describe('networks', () => {
       organizationId: demo.organizationId,
       name: 'DMZ',
       description: 'Public services',
+      monitoringEnabled: true,
+      pollIntervalSeconds: 60,
     });
     const listed = await owner.get<Many<Network>>('/api/networks', {
       query: { organizationId: demo.organizationId },
@@ -76,7 +78,68 @@ describe('networks', () => {
       organizationId: demo.organizationId,
       name: 'Branch Network v2',
       description: 'Renamed',
+      monitoringEnabled: true,
+      pollIntervalSeconds: 60,
     });
+  });
+
+  it('lets owners and admins control collection per network', async () => {
+    const admin = api.as(users.nsAdmin);
+    const created = await admin.post<One<Network>>('/api/networks', {
+      organizationId: demo.organizationId,
+      name: 'Lab',
+      description: '',
+      monitoringEnabled: false,
+      pollIntervalSeconds: 15,
+    });
+    expect(created.body.data).toMatchObject({ monitoringEnabled: false, pollIntervalSeconds: 15 });
+    // A rename without monitoring fields leaves the settings alone.
+    const renamed = await admin.patch<One<Network>>(`/api/networks/${created.body.data.id}`, {
+      organizationId: demo.organizationId,
+      name: 'Lab (paused)',
+      description: '',
+    });
+    expect(renamed.body.data).toMatchObject({
+      name: 'Lab (paused)',
+      monitoringEnabled: false,
+      pollIntervalSeconds: 15,
+    });
+    const resumed = await admin.patch<One<Network>>(`/api/networks/${created.body.data.id}`, {
+      organizationId: demo.organizationId,
+      name: 'Lab',
+      description: '',
+      monitoringEnabled: true,
+      pollIntervalSeconds: 300,
+    });
+    expect(resumed.body.data).toMatchObject({ monitoringEnabled: true, pollIntervalSeconds: 300 });
+    const paused = await admin.patch<One<Network>>(`/api/networks/${demo.coreNetworkId}`, {
+      organizationId: demo.organizationId,
+      name: 'Core Network',
+      description: 'Data center and campus infrastructure',
+      monitoringEnabled: false,
+    });
+    expect(paused.body.data).toMatchObject({ monitoringEnabled: false, pollIntervalSeconds: 30 });
+    for (const pollIntervalSeconds of [4, 3601, 30.5]) {
+      expectError(
+        await admin.patch(`/api/networks/${created.body.data.id}`, {
+          organizationId: demo.organizationId,
+          name: 'Lab',
+          description: '',
+          pollIntervalSeconds,
+        }),
+        400,
+      );
+    }
+    expectError(
+      await api.as(users.nsOperator).patch(`/api/networks/${created.body.data.id}`, {
+        organizationId: demo.organizationId,
+        name: 'Lab',
+        description: '',
+        monitoringEnabled: false,
+      }),
+      403,
+      'Organization admin access required',
+    );
   });
 
   it('returns 404 for unknown network ids without leaking other organizations', async () => {
@@ -220,6 +283,7 @@ describe('devices', () => {
       id: expect.any(String),
       ...body,
       status: 'Pending',
+      statusReason: 'Waiting for the first check',
       uptime: 'Not measured',
       latency: 0,
       load: 0,
@@ -278,7 +342,7 @@ describe('devices', () => {
       uptime: '42d 06h',
       latency: 4,
       load: 32,
-      lastSeen: '2026-10-12T13:40:00.000Z',
+      lastSeen: fixtures.devices.find((device) => device.id === demo.coreRouterId)!.lastSeen,
     });
 
     const readdressed = await operator.patch<One<Device>>(`/api/devices/${demo.coreRouterId}`, {
@@ -292,6 +356,7 @@ describe('devices', () => {
     expect(readdressed.body.data).toMatchObject({
       address: '10.20.0.254',
       status: 'Pending',
+      statusReason: 'Waiting for the first check',
       uptime: 'Not measured',
       latency: 0,
       load: 0,

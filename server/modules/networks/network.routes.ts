@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { pollIntervalBounds } from '../../../shared/network.ts';
 import { requirePrincipal } from '../../http/access.ts';
 import {
   areas,
@@ -33,6 +34,12 @@ const networkBody = {
     organizationId: { type: 'string', minLength: 1, maxLength: 120 },
     name: { type: 'string', minLength: 1, maxLength: 120 },
     description: { type: 'string', maxLength: 500 },
+    monitoringEnabled: { type: 'boolean' },
+    pollIntervalSeconds: {
+      type: 'integer',
+      minimum: pollIntervalBounds.min,
+      maximum: pollIntervalBounds.max,
+    },
   },
 } as const;
 

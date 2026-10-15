@@ -3,7 +3,11 @@ import {
   insertAuditEvent,
   listAuditEvents,
 } from '../../../server/persistence/repositories/audit-repository.ts';
-import { updateArea } from '../../../server/persistence/repositories/network-repository.ts';
+import {
+  getDevice,
+  updateArea,
+  updateDeviceSnapshot,
+} from '../../../server/persistence/repositories/network-repository.ts';
 import {
   createOrganization,
   getOrganization,
@@ -61,6 +65,19 @@ describe('scoped lookups', () => {
       name: 'Renamed',
       region: 'Region',
     });
+  });
+
+  it('device snapshot refreshes are scoped to the organization', () => {
+    const snapshot = {
+      status: 'Offline' as const,
+      uptime: '—',
+      latency: 0,
+      load: 0,
+      lastSeen: '2026-10-13T00:00:00.000Z',
+    };
+    expect(updateDeviceSnapshot(demo.coreRouterId, acme.organizationId, snapshot)).toBeUndefined();
+    expect(getDevice(demo.coreRouterId, demo.organizationId)?.status).toBe('Healthy');
+    expect(updateDeviceSnapshot(demo.coreRouterId, demo.organizationId, snapshot)).toMatchObject(snapshot);
   });
 
   it('audit events filter by entity and honour the default limit', () => {

@@ -29,6 +29,10 @@ export function getOverview(deviceList: Device[], areaList: Area[]): NetworkOver
     healthScore:
       deviceList.length > pending ? Number(((healthy / (deviceList.length - pending)) * 100).toFixed(2)) : 0,
     areas: areaList.length,
-    updatedAt: new Date().toISOString(),
+    updatedAt: deviceList.reduce<string | null>(
+      (latest, device) =>
+        device.lastSeen !== null && (latest === null || device.lastSeen > latest) ? device.lastSeen : latest,
+      null,
+    ),
   };
 }

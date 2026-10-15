@@ -6,6 +6,8 @@ import { NetworkManagement } from './NetworkManagement.tsx';
 import { AreaManagement } from './AreaManagement.tsx';
 import { DeviceEnrollment } from './DeviceEnrollment.tsx';
 import { DeviceManagement } from './DeviceManagement.tsx';
+import { CollectionStatus } from './CollectionStatus.tsx';
+import { formatRelativeTime, formatTimestamp } from '../lib/time.ts';
 
 export type DashboardPage =
   'Overview' | 'Devices' | 'Topology' | 'Areas' | 'Activity' | 'Organization' | 'Settings';
@@ -34,6 +36,8 @@ type DashboardViewsProps = {
   onSessionChanged: () => Promise<void>;
   onLogout: () => void;
   createOrganizationRequest: number;
+  /** Bumped whenever the dashboard reloads its data; lets panels refresh alongside it. */
+  dataVersion: number;
 };
 const statusClass = (status: string) => status.toLowerCase();
 export function DashboardViews(props: DashboardViewsProps) {
@@ -61,6 +65,7 @@ export function DashboardViews(props: DashboardViewsProps) {
     onSessionChanged,
     onLogout,
     createOrganizationRequest,
+    dataVersion,
   } = props;
   return (
     <>
@@ -114,6 +119,14 @@ export function DashboardViews(props: DashboardViewsProps) {
                 <div>
                   <h2>Network health</h2>
                   <p>Device status across all areas</p>
+                  <p
+                    className="data-freshness"
+                    title={overview.updatedAt ? formatTimestamp(overview.updatedAt) : undefined}
+                  >
+                    {overview.updatedAt
+                      ? `Data last updated ${formatRelativeTime(overview.updatedAt)}`
+                      : 'No checks collected yet'}
+                  </p>
                 </div>
                 <button className="more-button">···</button>
               </div>
@@ -411,6 +424,11 @@ export function DashboardViews(props: DashboardViewsProps) {
       )}
       {page === 'Settings' && (
         <>
+          <CollectionStatus
+            organizationId={organizationId}
+            canManage={canManageNetworks}
+            dataVersion={dataVersion}
+          />
           <NetworkManagement
             networks={networks}
             organizationId={organizationId}

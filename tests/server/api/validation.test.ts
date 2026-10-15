@@ -131,6 +131,13 @@ describe('request validation', () => {
         'audit with unknown entity type',
         () => api.as(users.nsOwner).get('/api/audit', { query: { entityType: 'user' } }),
       ],
+      [
+        'device history with a non-integer limit',
+        () =>
+          api.as(users.nsOwner).get(`/api/devices/${demo.coreRouterId}/observations`, {
+            query: { organizationId: demo.organizationId, limit: 'many' },
+          }),
+      ],
       ['organization without a name', () => api.as(users.nsOwner).post('/api/organizations', {})],
       [
         'organization with an empty name',

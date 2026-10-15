@@ -2,7 +2,9 @@ import type {
   AccessRole,
   Area,
   AuditEvent,
+  CollectionStatus,
   Device,
+  DeviceObservation,
   DeviceType,
   Network,
   NetworkOverview,
@@ -12,6 +14,14 @@ import type {
   Team,
 } from '../../shared/network.ts';
 import type { Invitation, Session } from '../types.ts';
+
+type NetworkInput = {
+  organizationId: string;
+  name: string;
+  description: string;
+  monitoringEnabled?: boolean;
+  pollIntervalSeconds?: number;
+};
 
 export class ApiError extends Error {
   constructor(
@@ -128,9 +138,9 @@ export const api = {
     ),
   networks: (filters: { organizationId?: string } = {}) =>
     request<{ data: Network[] }>(`/api/networks${queryString(filters)}`),
-  createNetwork: (input: { organizationId: string; name: string; description: string }) =>
+  createNetwork: (input: NetworkInput) =>
     request<{ data: Network }>('/api/networks', { method: 'POST', body: JSON.stringify(input) }),
-  updateNetwork: (networkId: string, input: { organizationId: string; name: string; description: string }) =>
+  updateNetwork: (networkId: string, input: NetworkInput) =>
     request<{ data: Network }>(`/api/networks/${encodeURIComponent(networkId)}`, {
       method: 'PATCH',
       body: JSON.stringify(input),
@@ -177,6 +187,20 @@ export const api = {
       `/api/devices/${encodeURIComponent(deviceId)}${queryString({ organizationId })}`,
       { method: 'DELETE' },
     ),
+  deviceObservations: (deviceId: string, filters: { organizationId: string; limit?: number }) =>
+    request<{ data: DeviceObservation[] }>(
+      `/api/devices/${encodeURIComponent(deviceId)}/observations${queryString({
+        organizationId: filters.organizationId,
+        limit: filters.limit?.toString(),
+      })}`,
+    ),
+  requestDeviceCheck: (deviceId: string, organizationId: string) =>
+    request<{ data: { requested: true; deviceId: string; collector: string } }>(
+      `/api/devices/${encodeURIComponent(deviceId)}/check`,
+      { method: 'POST', body: JSON.stringify({ organizationId }) },
+    ),
+  monitoringStatus: (filters: { organizationId?: string } = {}) =>
+    request<{ data: CollectionStatus }>(`/api/monitoring/status${queryString(filters)}`),
   areas: (filters: { organizationId?: string; networkId?: string } = {}) =>
     request<{ data: Area[] }>(`/api/areas${queryString(filters)}`),
   devices: (filters: { organizationId?: string; networkId?: string } = {}) =>

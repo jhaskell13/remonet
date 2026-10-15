@@ -1,4 +1,4 @@
-import type { Area, Device, Network, Organization, Team } from '../../shared/network.ts';
+import type { Area, Device, DeviceObservation, Network, Organization, Team } from '../../shared/network.ts';
 
 export const organizations: Organization[] = [
   { id: 'org-demo', name: 'Northstar Engineering' },
@@ -11,24 +11,32 @@ export const networks: Network[] = [
     organizationId: 'org-demo',
     name: 'Core Network',
     description: 'Data center and campus infrastructure',
+    monitoringEnabled: true,
+    pollIntervalSeconds: 30,
   },
   {
     id: 'net-branch',
     organizationId: 'org-demo',
     name: 'Branch Network',
     description: 'Remote offices and warehouse',
+    monitoringEnabled: true,
+    pollIntervalSeconds: 60,
   },
   {
     id: 'net-acme',
     organizationId: 'org-acme',
     name: 'Plant Network',
     description: 'Manufacturing plant and office',
+    monitoringEnabled: true,
+    pollIntervalSeconds: 60,
   },
   {
     id: 'net-solo',
     organizationId: 'org-solo',
     name: 'Home Lab',
     description: 'Personal lab and remote access',
+    monitoringEnabled: true,
+    pollIntervalSeconds: 120,
   },
 ];
 export const areas: Area[] = [
@@ -82,7 +90,13 @@ export const areas: Area[] = [
     region: 'Personal',
   },
 ];
-export const devices: Device[] = [
+// Illustrative telemetry is stamped relative to when the fixtures load so the demo does not start
+// out stale; the offline access point last answered three hours ago.
+const loadedAt = Date.now();
+const minutesAgo = (minutes: number) => new Date(loadedAt - minutes * 60_000).toISOString();
+/** Stored snapshots; the status reason is derived on every read, never stored. */
+export type SeededDevice = Omit<Device, 'statusReason'>;
+export const devices: SeededDevice[] = [
   {
     id: 'RTR-001',
     organizationId: 'org-demo',
@@ -95,7 +109,7 @@ export const devices: Device[] = [
     uptime: '42d 06h',
     latency: 4,
     load: 32,
-    lastSeen: '2026-10-12T13:40:00.000Z',
+    lastSeen: minutesAgo(0),
   },
   {
     id: 'SW-014',
@@ -109,7 +123,7 @@ export const devices: Device[] = [
     uptime: '18d 12h',
     latency: 8,
     load: 48,
-    lastSeen: '2026-10-12T13:40:00.000Z',
+    lastSeen: minutesAgo(0),
   },
   {
     id: 'FW-002',
@@ -123,7 +137,7 @@ export const devices: Device[] = [
     uptime: '9d 03h',
     latency: 28,
     load: 76,
-    lastSeen: '2026-10-12T13:39:00.000Z',
+    lastSeen: minutesAgo(1),
   },
   {
     id: 'AP-037',
@@ -137,7 +151,7 @@ export const devices: Device[] = [
     uptime: '—',
     latency: 0,
     load: 0,
-    lastSeen: '2026-10-12T10:40:00.000Z',
+    lastSeen: minutesAgo(180),
   },
   {
     id: 'RTR-008',
@@ -151,7 +165,7 @@ export const devices: Device[] = [
     uptime: '26d 19h',
     latency: 12,
     load: 24,
-    lastSeen: '2026-10-12T13:40:00.000Z',
+    lastSeen: minutesAgo(0),
   },
   {
     id: 'SW-021',
@@ -165,7 +179,7 @@ export const devices: Device[] = [
     uptime: '63d 02h',
     latency: 3,
     load: 41,
-    lastSeen: '2026-10-12T13:40:00.000Z',
+    lastSeen: minutesAgo(0),
   },
   {
     id: 'AC-RTR-01',
@@ -179,7 +193,7 @@ export const devices: Device[] = [
     uptime: '31d 08h',
     latency: 9,
     load: 38,
-    lastSeen: '2026-10-12T13:40:00.000Z',
+    lastSeen: minutesAgo(0),
   },
   {
     id: 'AC-SW-12',
@@ -193,7 +207,7 @@ export const devices: Device[] = [
     uptime: '12d 01h',
     latency: 31,
     load: 72,
-    lastSeen: '2026-10-12T13:38:00.000Z',
+    lastSeen: minutesAgo(2),
   },
   {
     id: 'SOLO-RTR-01',
@@ -207,7 +221,7 @@ export const devices: Device[] = [
     uptime: '7d 04h',
     latency: 2,
     load: 18,
-    lastSeen: '2026-10-12T13:40:00.000Z',
+    lastSeen: minutesAgo(0),
   },
   {
     id: 'SOLO-SW-01',
@@ -221,9 +235,57 @@ export const devices: Device[] = [
     uptime: '7d 04h',
     latency: 1,
     load: 12,
-    lastSeen: '2026-10-12T13:40:00.000Z',
+    lastSeen: minutesAgo(0),
   },
 ];
+type ObservationSeed = Partial<DeviceObservation> & {
+  deviceId: string;
+  minutesAgo: number;
+  result?: DeviceObservation['result'];
+};
+/** Recent history behind the snapshots above, so the demo shows timestamped checks from the start. */
+function history(seeds: ObservationSeed[]): DeviceObservation[] {
+  return seeds.map(({ minutesAgo: minutes, ...seed }, index) => {
+    const device = devices.find((candidate) => candidate.id === seed.deviceId)!;
+    const result = seed.result ?? 'success';
+    const measured = result === 'success';
+    return {
+      id: `obs-demo-${String(index + 1).padStart(3, '0')}`,
+      organizationId: device.organizationId,
+      networkId: device.networkId,
+      deviceId: device.id,
+      source: 'simulator',
+      result,
+      latencyMs: measured ? (seed.latencyMs ?? device.latency) : null,
+      loadPercent: measured ? (seed.loadPercent ?? device.load) : null,
+      uptimeSeconds: measured ? (seed.uptimeSeconds ?? null) : null,
+      errorMessage: measured ? null : (seed.errorMessage ?? 'Check timed out'),
+      collectedAt: minutesAgo(minutes),
+      createdAt: minutesAgo(minutes),
+    };
+  });
+}
+export const deviceObservations: DeviceObservation[] = history([
+  { deviceId: 'RTR-001', minutesAgo: 10, latencyMs: 5, loadPercent: 30 },
+  { deviceId: 'RTR-001', minutesAgo: 5, latencyMs: 4, loadPercent: 31 },
+  { deviceId: 'RTR-001', minutesAgo: 0 },
+  { deviceId: 'SW-014', minutesAgo: 5, latencyMs: 7, loadPercent: 45 },
+  { deviceId: 'SW-014', minutesAgo: 0 },
+  { deviceId: 'FW-002', minutesAgo: 11, latencyMs: 12, loadPercent: 58 },
+  { deviceId: 'FW-002', minutesAgo: 6, latencyMs: 24, loadPercent: 69 },
+  { deviceId: 'FW-002', minutesAgo: 1 },
+  { deviceId: 'AP-037', minutesAgo: 180, latencyMs: 9, loadPercent: 22 },
+  { deviceId: 'AP-037', minutesAgo: 120, result: 'timeout' },
+  { deviceId: 'AP-037', minutesAgo: 60, result: 'error', errorMessage: 'EHOSTUNREACH 10.30.3.37' },
+  { deviceId: 'AP-037', minutesAgo: 5, result: 'timeout' },
+  { deviceId: 'RTR-008', minutesAgo: 0 },
+  { deviceId: 'SW-021', minutesAgo: 0 },
+  { deviceId: 'AC-RTR-01', minutesAgo: 0 },
+  { deviceId: 'AC-SW-12', minutesAgo: 7, latencyMs: 18, loadPercent: 61 },
+  { deviceId: 'AC-SW-12', minutesAgo: 2 },
+  { deviceId: 'SOLO-RTR-01', minutesAgo: 0 },
+  { deviceId: 'SOLO-SW-01', minutesAgo: 0 },
+]);
 export const teams: Team[] = [
   { id: 'team-northstar', organizationId: 'org-demo', name: 'Network Operations' },
   { id: 'team-acme', organizationId: 'org-acme', name: 'Infrastructure Team' },

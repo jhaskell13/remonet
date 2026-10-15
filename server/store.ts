@@ -2,6 +2,7 @@
 export type {
   AccessRole,
   AuditEvent,
+  DeviceObservation,
   InvitationRecord,
   OrganizationAccess,
   OrganizationMember,
@@ -58,3 +59,10 @@ export {
   saveSession,
 } from './persistence/repositories/session-repository.ts';
 export { insertAuditEvent, listAuditEvents } from './persistence/repositories/audit-repository.ts';
+export {
+  countObservations,
+  getLatestObservation,
+  insertObservation,
+  listObservationsForDevice,
+  pruneObservations,
+} from './persistence/repositories/device-observation-repository.ts';

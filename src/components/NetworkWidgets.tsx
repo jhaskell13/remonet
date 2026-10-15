@@ -65,10 +65,11 @@ export function DeviceTable({ rows, areas }: { rows: Device[]; areas: Area[] }) 
               <td>{areas.find((area) => area.id === device.areaId)?.name ?? device.areaId}</td>
               <td className="mono">{device.address}</td>
               <td>
-                <span className={`status-pill ${statusClass(device.status)}`}>
+                <span className={`status-pill ${statusClass(device.status)}`} title={device.statusReason}>
                   <i></i>
                   {device.status}
                 </span>
+                <small className="status-reason">{device.statusReason}</small>
               </td>
               <td>
                 {device.status === 'Offline' || device.status === 'Pending' ? '—' : `${device.latency} ms`}

@@ -27,6 +27,7 @@ describe('development seeding', () => {
     expect(count('networks')).toBe(4);
     expect(count('areas')).toBe(7);
     expect(count('devices')).toBe(10);
+    expect(count('device_observations')).toBe(19);
     expect(count('teams')).toBe(3);
     expect(count('users')).toBe(2);
     expect(listUserOrganizations('user-solo')).toEqual([
@@ -37,6 +38,31 @@ describe('development seeding', () => {
       { id: 'org-demo', name: 'Northstar Engineering', role: 'admin' },
     ]);
     expect(db.pragma('foreign_key_check')).toEqual([]);
+  });
+
+  it('seeds a recent history that agrees with each device snapshot', () => {
+    const rows = db
+      .prepare(
+        'SELECT device_id AS deviceId, result, latency_ms AS latencyMs, error_message AS errorMessage, collected_at AS collectedAt FROM device_observations ORDER BY device_id, collected_at',
+      )
+      .all() as {
+      deviceId: string;
+      result: string;
+      latencyMs: number | null;
+      errorMessage: string | null;
+      collectedAt: string;
+    }[];
+    const router = rows.filter((row) => row.deviceId === 'RTR-001');
+    expect(router.map((row) => row.result)).toEqual(['success', 'success', 'success']);
+    expect(router[router.length - 1]?.latencyMs).toBe(4);
+    const accessPoint = rows.filter((row) => row.deviceId === 'AP-037');
+    expect(accessPoint.map((row) => [row.result, row.errorMessage])).toEqual([
+      ['success', null],
+      ['timeout', 'Check timed out'],
+      ['error', 'EHOSTUNREACH 10.30.3.37'],
+      ['timeout', 'Check timed out'],
+    ]);
+    for (const row of rows) expect(Date.parse(row.collectedAt)).toBeLessThanOrEqual(Date.now());
   });
 
   it('the documented demo credentials sign in', () => {
@@ -57,6 +83,19 @@ describe('development seeding', () => {
     expect(db.prepare("SELECT description FROM networks WHERE id = 'net-core'").get()).toEqual({
       description: 'edited locally',
     });
+  });
+
+  it('refreshes demo telemetry on every start while keeping metadata edits', () => {
+    db.prepare(
+      "UPDATE devices SET name = 'Renamed locally', status = 'Offline', last_seen = '2020-01-01T00:00:00.000Z' WHERE id = 'RTR-001'",
+    ).run();
+    seedDatabase();
+    const router = db
+      .prepare('SELECT name, status, last_seen AS lastSeen FROM devices WHERE id = ?')
+      .get('RTR-001') as { name: string; status: string; lastSeen: string };
+    expect(router.name).toBe('Renamed locally');
+    expect(router.status).toBe('Healthy');
+    expect(Date.now() - Date.parse(router.lastSeen)).toBeLessThan(60_000);
   });
 
   it('resets demo passwords to their documented values on every start', () => {

@@ -15,9 +15,21 @@ function origin(name: string, value: string | undefined, fallback: string) {
   }
 }
 
+function boundedInteger(name: string, value: string | undefined, fallback: number, min: number, max: number) {
+  const parsed = value === undefined ? fallback : Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max)
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  return parsed;
+}
+
 const nodeEnv = process.env.NODE_ENV ?? 'development';
 if (!['development', 'test', 'production'].includes(nodeEnv))
   throw new Error('NODE_ENV must be development, test, or production');
+
+// The simulator stands in for hardware during development; elsewhere collection is opt-in.
+const collector = process.env.REMONET_COLLECTOR ?? (nodeEnv === 'development' ? 'simulator' : 'off');
+if (collector !== 'simulator' && collector !== 'off')
+  throw new Error('REMONET_COLLECTOR must be simulator or off');
 
 const allowedOrigin = origin(
   'REMONET_ALLOWED_ORIGIN',
@@ -117,4 +129,38 @@ export const config = Object.freeze({
   bootstrap,
   bodyLimitBytes: 8_192,
   sessionLifetimeMs: 8 * 60 * 60 * 1000,
+  monitoring: Object.freeze({
+    /** Which collector the scheduler runs, or `off` to collect nothing. */
+    collector: collector as 'simulator' | 'off',
+    /** Observations kept per device; older rows are pruned as new ones are recorded. */
+    observationRetentionPerDevice: boundedInteger(
+      'REMONET_OBSERVATION_RETENTION',
+      process.env.REMONET_OBSERVATION_RETENTION,
+      200,
+      1,
+      100_000,
+    ),
+    /** How long one check may take, including the collector's own retries of a packet, before it is cancelled. */
+    checkTimeoutMs: boundedInteger(
+      'REMONET_CHECK_TIMEOUT_MS',
+      process.env.REMONET_CHECK_TIMEOUT_MS,
+      3_000,
+      100,
+      120_000,
+    ),
+    /** Checks in flight at once across all networks. */
+    maxConcurrentChecks: boundedInteger(
+      'REMONET_MAX_CONCURRENT_CHECKS',
+      process.env.REMONET_MAX_CONCURRENT_CHECKS,
+      8,
+      1,
+      256,
+    ),
+    /** Attempts per device per cycle before a failure is recorded; retries back off exponentially. */
+    checkAttempts: boundedInteger('REMONET_CHECK_ATTEMPTS', process.env.REMONET_CHECK_ATTEMPTS, 3, 1, 10),
+    /** A device whose last successful check is older than this is reported Offline. */
+    staleAfterMs:
+      boundedInteger('REMONET_STALE_AFTER_SECONDS', process.env.REMONET_STALE_AFTER_SECONDS, 300, 5, 86_400) *
+      1000,
+  }),
 });

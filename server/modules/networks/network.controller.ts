@@ -23,7 +23,13 @@ export type { EnrollDeviceInput } from './network.service.ts';
 
 export type NetworkQuery = { organizationId?: string; networkId?: string; areaId?: string };
 export type TeamQuery = { organizationId?: string };
-export type NetworkBody = { organizationId: string; name: string; description: string };
+export type NetworkBody = {
+  organizationId: string;
+  name: string;
+  description: string;
+  monitoringEnabled?: boolean;
+  pollIntervalSeconds?: number;
+};
 export type AreaBody = { organizationId: string; networkId: string; name: string; region: string };
 export type DeviceBody = {
   organizationId: string;

@@ -17,6 +17,12 @@ const managed = [
   'REMONET_BOOTSTRAP_DISPLAY_NAME',
   'REMONET_BOOTSTRAP_ORGANIZATION_ID',
   'REMONET_BOOTSTRAP_ORGANIZATION_NAME',
+  'REMONET_OBSERVATION_RETENTION',
+  'REMONET_STALE_AFTER_SECONDS',
+  'REMONET_CHECK_TIMEOUT_MS',
+  'REMONET_MAX_CONCURRENT_CHECKS',
+  'REMONET_CHECK_ATTEMPTS',
+  'REMONET_COLLECTOR',
 ];
 const original = Object.fromEntries(managed.map((name) => [name, process.env[name]]));
 
@@ -61,8 +67,35 @@ describe('configuration defaults', () => {
       bootstrap: undefined,
       bodyLimitBytes: 8_192,
       sessionLifetimeMs: 8 * 60 * 60 * 1000,
+      monitoring: {
+        collector: 'simulator',
+        observationRetentionPerDevice: 200,
+        staleAfterMs: 5 * 60 * 1000,
+        checkTimeoutMs: 3_000,
+        maxConcurrentChecks: 8,
+        checkAttempts: 3,
+      },
     });
     expect(Object.isFrozen(config)).toBe(true);
+    expect(Object.isFrozen(config.monitoring)).toBe(true);
+  });
+
+  it('reads the observation retention bound and the staleness window', async () => {
+    const { config } = await loadConfig({
+      REMONET_OBSERVATION_RETENTION: '25',
+      REMONET_STALE_AFTER_SECONDS: '90',
+      REMONET_CHECK_TIMEOUT_MS: '500',
+      REMONET_MAX_CONCURRENT_CHECKS: '2',
+      REMONET_CHECK_ATTEMPTS: '1',
+    });
+    expect(config.monitoring).toEqual({
+      collector: 'simulator',
+      observationRetentionPerDevice: 25,
+      staleAfterMs: 90_000,
+      checkTimeoutMs: 500,
+      maxConcurrentChecks: 2,
+      checkAttempts: 1,
+    });
   });
 
   it('normalises origins and derives the app origin from the allowed origin', async () => {
@@ -74,6 +107,17 @@ describe('configuration defaults', () => {
   it('parses the integration organization list', async () => {
     const { config } = await loadConfig({ REMONET_API_ORGANIZATION_IDS: ' org-a, org-b ,, ' });
     expect(config.apiOrganizationIds).toEqual(['org-a', 'org-b']);
+  });
+
+  it('runs the simulator by default only in development', async () => {
+    expect((await loadConfig({ NODE_ENV: 'development' })).config.monitoring.collector).toBe('simulator');
+    expect((await loadConfig({ NODE_ENV: 'test' })).config.monitoring.collector).toBe('off');
+    expect((await loadConfig({ NODE_ENV: 'production', ...https })).config.monitoring.collector).toBe('off');
+    expect(
+      (await loadConfig({ NODE_ENV: 'production', REMONET_COLLECTOR: 'simulator', ...https })).config
+        .monitoring.collector,
+    ).toBe('simulator');
+    expect((await loadConfig({ REMONET_COLLECTOR: 'off' })).config.monitoring.collector).toBe('off');
   });
 
   it('only seeds demo data in development', async () => {
@@ -96,6 +140,37 @@ describe('configuration validation refuses to start on', () => {
     ['a port of zero', { API_PORT: '0' }, 'API_PORT must be an integer between 1 and 65535'],
     ['a port above 65535', { API_PORT: '70000' }, 'API_PORT must be an integer between 1 and 65535'],
     ['a fractional port', { API_PORT: '3001.5' }, 'API_PORT must be an integer between 1 and 65535'],
+    [
+      'a zero observation retention',
+      { REMONET_OBSERVATION_RETENTION: '0' },
+      'REMONET_OBSERVATION_RETENTION must be an integer between 1 and 100000',
+    ],
+    [
+      'a staleness window under five seconds',
+      { REMONET_STALE_AFTER_SECONDS: '4' },
+      'REMONET_STALE_AFTER_SECONDS must be an integer between 5 and 86400',
+    ],
+    ['an unknown collector', { REMONET_COLLECTOR: 'snmp' }, 'REMONET_COLLECTOR must be simulator or off'],
+    [
+      'a check timeout under 100 ms',
+      { REMONET_CHECK_TIMEOUT_MS: '99' },
+      'REMONET_CHECK_TIMEOUT_MS must be an integer between 100 and 120000',
+    ],
+    [
+      'zero concurrent checks',
+      { REMONET_MAX_CONCURRENT_CHECKS: '0' },
+      'REMONET_MAX_CONCURRENT_CHECKS must be an integer between 1 and 256',
+    ],
+    [
+      'more than ten attempts',
+      { REMONET_CHECK_ATTEMPTS: '11' },
+      'REMONET_CHECK_ATTEMPTS must be an integer between 1 and 10',
+    ],
+    [
+      'a non-numeric observation retention',
+      { REMONET_OBSERVATION_RETENTION: 'many' },
+      'REMONET_OBSERVATION_RETENTION must be an integer between 1 and 100000',
+    ],
     [
       'an allowed origin with a path',
       { REMONET_ALLOWED_ORIGIN: 'http://127.0.0.1:5173/app' },

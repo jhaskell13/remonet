@@ -130,6 +130,23 @@ describe('service-level guards for the integration token', () => {
     expect(db.prepare('SELECT COUNT(*) AS count FROM audit_log').get()).toEqual({ count: 0 });
   });
 
+  it('the network service bounds the poll interval itself, not only through the request schema', () => {
+    const attempt = (pollIntervalSeconds: number) =>
+      refusal(() =>
+        createNetworkFor(owner, {
+          organizationId: demo.organizationId,
+          name: 'Lab',
+          description: '',
+          pollIntervalSeconds,
+        }),
+      );
+    const message = 'Poll interval must be a whole number of seconds between 5 and 3600';
+    expect(attempt(4)).toEqual({ status: 400, message });
+    expect(attempt(3601)).toEqual({ status: 400, message });
+    expect(attempt(30.5)).toEqual({ status: 400, message });
+    expect(attempt(30)).toBeUndefined();
+  });
+
   it('a stale session whose organization disappeared cannot act on it', () => {
     // The principal object is built per request; here it claims ownership of an organization that
     // was removed in between (cascading its teams and memberships).

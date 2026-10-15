@@ -1,10 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../../src/api/client.ts';
 import Dashboard from '../../../src/components/Dashboard.tsx';
 import { apiMock } from '../helpers/api-mock.ts';
-import { devices, sessionFor } from '../helpers/fixtures.ts';
+import { devices, overview, sessionFor } from '../helpers/fixtures.ts';
 
 vi.mock('../../../src/api/client.ts', async (importOriginal) => {
   const { apiMock } = await import('../helpers/api-mock.ts');
@@ -16,8 +16,12 @@ vi.mock('../../../src/api/client.ts', async (importOriginal) => {
   };
 });
 
-function renderDashboard(role: 'owner' | 'admin' | 'operator' | 'viewer' = 'admin') {
+function renderDashboard(
+  role: 'owner' | 'admin' | 'operator' | 'viewer' = 'admin',
+  prepare: (api: ReturnType<typeof apiMock.reset>) => void = () => {},
+) {
   const api = apiMock.reset();
+  prepare(api);
   const session = sessionFor('user-admin', role);
   const onLogout = vi.fn();
   render(
@@ -118,6 +122,15 @@ describe('Dashboard pages', () => {
     expect(stat('Network health').querySelector('.stat-value')?.textContent).toBe('33.33%');
     expect(screen.getByText('3 devices need review.')).toBeTruthy();
     expect(screen.getAllByText('Data Center').length).toBeGreaterThan(0);
+    expect(screen.getByText(/^Data last updated .* ago$/).getAttribute('title')).toContain('2026');
+  });
+
+  it('overview says so when nothing has been collected yet', async () => {
+    renderDashboard('admin', (api) =>
+      api.overview.mockResolvedValue({ data: { ...overview, updatedAt: null } }),
+    );
+    await screen.findByRole('heading', { name: /welcome/i });
+    expect(screen.getByText('No checks collected yet')).toBeTruthy();
   });
 
   it('devices page searches by name, id, area, or type and filters by status', async () => {
@@ -218,5 +231,85 @@ describe('Dashboard pages', () => {
     api.networks.mockRejectedValueOnce(new ApiError('Unauthorized', 401));
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Organization' }), 'org-demo');
     await waitFor(() => expect(onLogout).toHaveBeenCalled());
+  });
+
+  it('signs out when the session is no longer valid', async () => {
+    const { api, onLogout } = renderDashboard();
+    await screen.findByRole('heading', { name: /welcome/i });
+    api.networks.mockRejectedValueOnce(new ApiError('Unauthorized', 401));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Organization' }), 'org-demo');
+    await waitFor(() => expect(onLogout).toHaveBeenCalled());
+  });
+});
+
+/** jsdom has no EventSource; this one lets the test play the server's part. */
+class FakeEventSource {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSED = 2;
+  static instances: FakeEventSource[] = [];
+  readyState = FakeEventSource.CONNECTING;
+  onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  closed = false;
+  private readonly listeners = new Map<string, ((message: MessageEvent<string>) => void)[]>();
+  constructor(readonly url: string) {
+    FakeEventSource.instances.push(this);
+  }
+  addEventListener(type: string, listener: (message: MessageEvent<string>) => void) {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+  close() {
+    this.closed = true;
+  }
+  push(type: string, data: unknown) {
+    for (const listener of this.listeners.get(type) ?? [])
+      listener({ data: JSON.stringify(data) } as MessageEvent<string>);
+  }
+}
+
+describe('Dashboard live updates', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    FakeEventSource.instances = [];
+  });
+
+  it('reports when the stream is unavailable and still loads data', async () => {
+    renderDashboard();
+    await screen.findByRole('heading', { name: /welcome/i });
+    expect(screen.getByRole('status').textContent).toContain('Live updates unavailable');
+  });
+
+  it('subscribes to the selected organization and refreshes the moment a check lands', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource);
+    const { api } = renderDashboard();
+    await screen.findByRole('heading', { name: /welcome/i });
+    const source = FakeEventSource.instances[0]!;
+    expect(source.url).toBe('/api/monitoring/events?organizationId=org-acme');
+    expect(screen.getByRole('status').textContent).toContain('Connecting live updates…');
+    act(() => source.onopen?.());
+    expect(screen.getByRole('status').textContent).toContain('Live updates');
+    expect(api.devices).toHaveBeenCalledTimes(1);
+
+    // A cycle delivers one event per device; the dashboard refreshes once for the burst.
+    act(() => {
+      source.push('observation', { type: 'observation', organizationId: 'org-acme', deviceId: 'RTR-001' });
+      source.push('observation', { type: 'observation', organizationId: 'org-acme', deviceId: 'FW-002' });
+      source.push('cycle', { type: 'cycle', organizationId: 'org-acme', networkId: 'net-acme' });
+    });
+    await waitFor(() => expect(api.devices).toHaveBeenCalledTimes(2));
+    expect(api.overview).toHaveBeenCalledTimes(2);
+    act(() => {
+      source.readyState = FakeEventSource.CONNECTING;
+      source.onerror?.();
+    });
+    expect(screen.getByRole('status').textContent).toContain('Reconnecting live updates…');
+
+    // Switching organizations re-subscribes with the new scope and closes the old stream.
+    await switchTo(/northstar engineering/i);
+    expect(source.closed).toBe(true);
+    expect(FakeEventSource.instances[1]?.url).toBe('/api/monitoring/events?organizationId=org-demo');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Organization' }), '');
+    expect(FakeEventSource.instances[2]?.url).toBe('/api/monitoring/events');
   });
 });

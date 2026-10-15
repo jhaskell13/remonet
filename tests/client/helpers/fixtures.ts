@@ -1,7 +1,9 @@
 import { vi } from 'vitest';
 import type {
   Area,
+  CollectionStatus,
   Device,
+  DeviceObservation,
   Network,
   NetworkOverview,
   OrganizationMember,
@@ -96,9 +98,30 @@ export const invitations: PendingInvitation[] = [
 ];
 
 export const networks: Network[] = [
-  { id: 'net-core', organizationId, name: 'Core Network', description: 'Data center and campus' },
-  { id: 'net-branch', organizationId, name: 'Branch Network', description: '' },
-  { id: 'net-acme', organizationId: 'org-acme', name: 'Plant Network', description: 'Manufacturing plant' },
+  {
+    id: 'net-core',
+    organizationId,
+    name: 'Core Network',
+    description: 'Data center and campus',
+    monitoringEnabled: true,
+    pollIntervalSeconds: 30,
+  },
+  {
+    id: 'net-branch',
+    organizationId,
+    name: 'Branch Network',
+    description: '',
+    monitoringEnabled: false,
+    pollIntervalSeconds: 60,
+  },
+  {
+    id: 'net-acme',
+    organizationId: 'org-acme',
+    name: 'Plant Network',
+    description: 'Manufacturing plant',
+    monitoringEnabled: true,
+    pollIntervalSeconds: 60,
+  },
 ];
 
 export const areas: Area[] = [
@@ -118,6 +141,7 @@ export const devices: Device[] = [
     type: 'Router',
     address: '10.20.0.1',
     status: 'Healthy',
+    statusReason: 'answered in 4 ms at 10% load',
     ...telemetry,
   },
   {
@@ -129,6 +153,7 @@ export const devices: Device[] = [
     type: 'Firewall',
     address: '10.10.0.2',
     status: 'Warning',
+    statusReason: 'latency 28 ms is above the 25 ms limit',
     ...telemetry,
     latency: 28,
   },
@@ -141,6 +166,7 @@ export const devices: Device[] = [
     type: 'Access point',
     address: '10.10.3.37',
     status: 'Offline',
+    statusReason: 'The last check got no answer',
     ...telemetry,
     latency: 0,
   },
@@ -153,12 +179,85 @@ export const devices: Device[] = [
     type: 'Switch',
     address: '10.10.2.50',
     status: 'Pending',
+    statusReason: 'Waiting for the first check',
     uptime: 'Not measured',
     latency: 0,
     load: 0,
     lastSeen: null,
   },
 ];
+
+export const observations: DeviceObservation[] = [
+  {
+    id: 'obs-2',
+    organizationId,
+    networkId: 'net-core',
+    deviceId: 'FW-002',
+    source: 'simulator',
+    result: 'success',
+    latencyMs: 28,
+    loadPercent: 76,
+    uptimeSeconds: 9 * 86_400 + 3 * 3_600,
+    errorMessage: null,
+    collectedAt: '2026-10-12T13:39:00.000Z',
+    createdAt: '2026-10-12T13:39:00.000Z',
+  },
+  {
+    id: 'obs-1',
+    organizationId,
+    networkId: 'net-core',
+    deviceId: 'FW-002',
+    source: 'simulator',
+    result: 'timeout',
+    latencyMs: null,
+    loadPercent: null,
+    uptimeSeconds: null,
+    errorMessage: 'Check timed out',
+    collectedAt: '2026-10-12T13:34:00.000Z',
+    createdAt: '2026-10-12T13:34:00.000Z',
+  },
+];
+
+export const collectionStatus: CollectionStatus = {
+  collector: 'simulator',
+  running: true,
+  inFlight: 1,
+  networks: [
+    {
+      networkId: 'net-core',
+      organizationId,
+      name: 'Core Network',
+      enabled: true,
+      pollIntervalSeconds: 30,
+      running: true,
+      nextRunAt: null,
+      lastCycle: {
+        networkId: 'net-core',
+        startedAt: '2026-10-12T13:39:50.000Z',
+        completedAt: '2026-10-12T13:40:00.000Z',
+        durationMs: 10_000,
+        devices: 4,
+        success: 2,
+        timeout: 1,
+        error: 1,
+        retries: 2,
+        dropped: 0,
+      },
+      lastError: null,
+    },
+    {
+      networkId: 'net-branch',
+      organizationId,
+      name: 'Branch Network',
+      enabled: false,
+      pollIntervalSeconds: 60,
+      running: false,
+      nextRunAt: null,
+      lastCycle: null,
+      lastError: 'database is locked',
+    },
+  ],
+};
 
 export const overview: NetworkOverview = {
   totalDevices: 4,
@@ -231,6 +330,11 @@ export function mockApi() {
     enrollDevice: vi.fn().mockResolvedValue({ data: devices[0] }),
     updateDevice: vi.fn().mockResolvedValue({ data: devices[0] }),
     deleteDevice: vi.fn().mockResolvedValue({ data: { ok: true } }),
+    deviceObservations: vi.fn().mockResolvedValue({ data: observations }),
+    requestDeviceCheck: vi
+      .fn()
+      .mockResolvedValue({ data: { requested: true, deviceId: 'RTR-001', collector: 'simulator' } }),
+    monitoringStatus: vi.fn().mockResolvedValue({ data: collectionStatus }),
     areas: vi.fn().mockResolvedValue({ data: areas }),
     devices: vi.fn().mockResolvedValue({ data: devices }),
     overview: vi.fn().mockResolvedValue({ data: overview }),
